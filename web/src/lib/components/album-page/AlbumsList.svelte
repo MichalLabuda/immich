@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { invalidateAll } from '$app/navigation';
   import AlbumCardGroup from '$lib/components/album-page/AlbumCardGroup.svelte';
   import AlbumsTable from '$lib/components/album-page/AlbumsTable.svelte';
   import OnEvents from '$lib/components/OnEvents.svelte';
@@ -10,6 +11,7 @@
   import {
     handleDeleteAlbum,
     handleDownloadAlbum,
+    handleSetAlbumLocked,
     redirectIfLockedAndNotElevated,
   } from '$lib/services/album.service';
   import {
@@ -26,7 +28,14 @@
   import { normalizeSearchString } from '$lib/utils/string-utils';
   import { AlbumUserRole, type AlbumResponseDto, type SharedLinkResponseDto } from '@immich/sdk';
   import { modalManager } from '@immich/ui';
-  import { mdiDeleteOutline, mdiDownload, mdiRenameOutline, mdiShareVariantOutline } from '@mdi/js';
+  import {
+    mdiDeleteOutline,
+    mdiDownload,
+    mdiLockOpenVariantOutline,
+    mdiLockOutline,
+    mdiRenameOutline,
+    mdiShareVariantOutline,
+  } from '@mdi/js';
   import { groupBy } from 'lodash-es';
   import { onMount, type Snippet } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -199,7 +208,7 @@
     isOpen = false;
   };
 
-  const handleSelect = async (action: 'edit' | 'share' | 'download' | 'delete') => {
+  const handleSelect = async (action: 'edit' | 'share' | 'download' | 'lock' | 'delete') => {
     closeAlbumContextMenu();
 
     if (!selectedAlbum) {
@@ -225,6 +234,15 @@
 
       case 'download': {
         await handleDownloadAlbum(selectedAlbum);
+        break;
+      }
+
+      case 'lock': {
+        const result = await handleSetAlbumLocked(selectedAlbum, !selectedAlbum.isLocked);
+        if (result) {
+          // The new album is not in the loaded data yet, so reload the albums.
+          await invalidateAll();
+        }
         break;
       }
 
@@ -304,10 +322,17 @@
 <RightClickContextMenu title={$t('album_options')} {...contextMenuPosition} {isOpen} onClose={closeAlbumContextMenu}>
   {#if showFullContextMenu}
     <MenuOption icon={mdiRenameOutline} text={$t('edit_album')} onClick={() => handleSelect('edit')} />
-    <MenuOption icon={mdiShareVariantOutline} text={$t('share')} onClick={() => handleSelect('share')} />
+    {#if !selectedAlbum?.isLocked}
+      <MenuOption icon={mdiShareVariantOutline} text={$t('share')} onClick={() => handleSelect('share')} />
+    {/if}
   {/if}
   <MenuOption icon={mdiDownload} text={$t('download')} onClick={() => handleSelect('download')} />
   {#if showFullContextMenu}
+    <MenuOption
+      icon={selectedAlbum?.isLocked ? mdiLockOpenVariantOutline : mdiLockOutline}
+      text={selectedAlbum?.isLocked ? $t('move_album_out_of_locked_folder') : $t('move_album_to_locked_folder')}
+      onClick={() => handleSelect('lock')}
+    />
     <MenuOption icon={mdiDeleteOutline} text={$t('delete')} onClick={() => handleSelect('delete')} />
   {/if}
 </RightClickContextMenu>

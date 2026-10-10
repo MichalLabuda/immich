@@ -5,7 +5,9 @@ import {
   AlbumUserRole,
   BulkIdErrorReason,
   deleteAlbum,
+  lockAlbums,
   removeUserFromAlbum,
+  unlockAlbums,
   updateAlbumInfo,
   updateAlbumUser,
   type AlbumResponseDto,
@@ -16,7 +18,16 @@ import {
   type UserResponseDto,
 } from '@immich/sdk';
 import { modalManager, toastManager, type ActionItem } from '@immich/ui';
-import { mdiImageOutline, mdiLink, mdiPlus, mdiPlusBoxOutline, mdiShareVariantOutline, mdiUpload } from '@mdi/js';
+import {
+  mdiImageOutline,
+  mdiLink,
+  mdiLockOpenVariantOutline,
+  mdiLockOutline,
+  mdiPlus,
+  mdiPlusBoxOutline,
+  mdiShareVariantOutline,
+  mdiUpload,
+} from '@mdi/js';
 import { type MessageFormatter } from 'svelte-i18n';
 import { goto } from '$app/navigation';
 import { page } from '$app/state';
@@ -46,40 +57,28 @@ export const getAlbumsActions = ($t: MessageFormatter) => {
 export const getAlbumActions = ($t: MessageFormatter, album: AlbumResponseDto) => {
   const isOwned = album.albumUsers[0].user.id === authManager.user.id;
 
+  // A locked album cannot be shared, so the sharing actions are not offered for one.
   const Share: ActionItem = {
     title: $t('share'),
     icon: mdiShareVariantOutline,
-    $if: () => isOwned,
-    onAction: async () => {
-      if (await redirectIfLockedAndNotElevated(album)) {
-        return;
-      }
-      modalManager.show(AlbumOptionsModal, { album });
-    },
+    $if: () => isOwned && !album.isLocked,
+    onAction: () => modalManager.show(AlbumOptionsModal, { album }),
   };
 
   const AddUsers: ActionItem = {
     title: $t('invite_people'),
     icon: mdiPlus,
     color: 'primary',
-    onAction: async () => {
-      if (await redirectIfLockedAndNotElevated(album)) {
-        return;
-      }
-      modalManager.show(AlbumAddUsersModal, { album });
-    },
+    $if: () => !album.isLocked,
+    onAction: () => modalManager.show(AlbumAddUsersModal, { album }),
   };
 
   const CreateSharedLink: ActionItem = {
     title: $t('create_link'),
     icon: mdiLink,
     color: 'primary',
-    onAction: async () => {
-      if (await redirectIfLockedAndNotElevated(album)) {
-        return;
-      }
-      modalManager.show(SharedLinkCreateModal, { albumId: album.id });
-    },
+    $if: () => !album.isLocked,
+    onAction: () => modalManager.show(SharedLinkCreateModal, { albumId: album.id }),
   };
 
   return { Share, AddUsers, CreateSharedLink };
@@ -335,6 +334,65 @@ export const handleDeleteAlbum = async (album: AlbumResponseDto, options?: { pro
   } catch (error) {
     handleError(error, $t('errors.unable_to_delete_album'), { notify });
     return false;
+  }
+};
+
+/**
+ * Move the album's assets to the locked folder (`isLocked`) or out of it. The server replaces the
+ * album with a new one of the other kind, so on success the caller gets the result with the new
+ * album's id and whether the source album was removed.
+ */
+export const handleSetAlbumLocked = async (album: AlbumResponseDto, isLocked: boolean) => {
+  const $t = await getFormatter();
+
+  if (!isLocked && (await redirectIfLockedAndNotElevated(album))) {
+    return;
+  }
+
+  const confirmed = await modalManager.showDialog({
+    title: isLocked ? $t('move_album_to_locked_folder') : $t('move_album_out_of_locked_folder'),
+    prompt: isLocked
+      ? $t('move_album_to_locked_folder_confirmation', { values: { album: album.albumName } })
+      : $t('move_album_out_of_locked_folder_confirmation', { values: { album: album.albumName } }),
+    confirmText: $t('move'),
+    confirmColor: isLocked ? 'primary' : 'danger',
+    icon: isLocked ? mdiLockOutline : mdiLockOpenVariantOutline,
+  });
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const [result] = isLocked
+      ? await lockAlbums({ bulkIdsDto: { ids: [album.id] } })
+      : await unlockAlbums({ bulkIdsDto: { ids: [album.id] } });
+    const { albumId } = result;
+
+    if (!result.success || !albumId) {
+      toastManager.warning($t('errors.unable_to_move_album'));
+      return;
+    }
+
+    if (result.removed) {
+      eventManager.emit('AlbumDelete', album);
+    }
+
+    const moved = isLocked
+      ? $t('album_moved_to_locked_folder', { values: { count: result.assetCount } })
+      : $t('album_moved_out_of_locked_folder', { values: { count: result.assetCount } });
+    const skipped =
+      result.skippedAssetCount > 0
+        ? ` ${$t('album_assets_left_behind_count', { values: { count: result.skippedAssetCount } })}`
+        : '';
+    toastManager.primary({
+      description: `${moved}${skipped}`,
+      button: { label: $t('view_album'), onclick: () => goto(Route.viewAlbum({ id: albumId })) },
+    });
+
+    return result;
+  } catch (error) {
+    handleError(error, $t('errors.unable_to_move_album'));
   }
 };
 

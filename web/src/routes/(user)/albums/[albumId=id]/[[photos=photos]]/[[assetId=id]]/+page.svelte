@@ -42,6 +42,7 @@
     getAlbumAssetsActions,
     handleDeleteAlbum,
     handleDownloadAlbum,
+    handleSetAlbumLocked,
   } from '$lib/services/album.service';
   import { getGlobalActions } from '$lib/services/app.service';
   import { getAssetBulkActions } from '$lib/services/asset.service';
@@ -70,6 +71,8 @@
     mdiImageOutline,
     mdiImagePlusOutline,
     mdiLink,
+    mdiLockOpenVariantOutline,
+    mdiLockOutline,
     mdiPlus,
     mdiPresentationPlay,
   } from '@mdi/js';
@@ -135,6 +138,20 @@
 
   const refreshAlbum = async () => {
     album = await getAlbumInfo({ id: album.id });
+  };
+
+  const handleSetLocked = async () => {
+    const result = await handleSetAlbumLocked(album, !album.isLocked);
+    if (!result) {
+      return;
+    }
+
+    if (result.removed && result.albumId) {
+      await goto(Route.viewAlbum({ id: result.albumId }));
+      return;
+    }
+
+    await refreshAlbum();
   };
 
   const setModeToView = async () => {
@@ -584,6 +601,11 @@
                 {/if}
 
                 {#if isOwned}
+                  <MenuOption
+                    icon={album.isLocked ? mdiLockOpenVariantOutline : mdiLockOutline}
+                    text={album.isLocked ? $t('move_album_out_of_locked_folder') : $t('move_album_to_locked_folder')}
+                    onClick={handleSetLocked}
+                  />
                   <MenuOption
                     icon={mdiDeleteOutline}
                     text={$t('delete_album')}
