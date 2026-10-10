@@ -23,9 +23,6 @@
 
   type Props = {
     onClose: (albums?: AlbumResponseDto[]) => void;
-    // When provided, this picker is being used to add these assets to whichever album(s) are
-    // selected.
-    assetIds?: string[];
     // When true, only locked albums are offered as targets, and creating a new album creates it
     // already locked. Used exclusively from within the Locked Folder view, where every asset being
     // added is already locked -- a locked album can never be created any other way, and can never
@@ -34,7 +31,7 @@
     lockedOnly?: boolean;
   };
 
-  let { onClose, assetIds, lockedOnly = false }: Props = $props();
+  let { onClose, lockedOnly = false }: Props = $props();
 
   onMount(async () => {
     const allAlbums = await getAllAlbums({});

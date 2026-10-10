@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { goto, invalidate, onNavigate, replaceState } from '$app/navigation';
-  import { page } from '$app/state';
+  import { goto, invalidate, onNavigate } from '$app/navigation';
   import { scrollMemoryClearer } from '$lib/actions/scroll-memory';
   import AlbumMap from '$lib/components/album-page/AlbumMap.svelte';
   import AlbumSummary from '$lib/components/album-page/AlbumSummary.svelte';

@@ -22,7 +22,7 @@
 </script>
 
 {#if album.isLocked && !authManager.isElevated}
-  <LockedCover {alt} class={className} {preload} />
+  <LockedCover {alt} class={className} />
 {:else if thumbnailUrl}
   <AssetCover {alt} class={className} src={thumbnailUrl} {preload} />
 {:else}

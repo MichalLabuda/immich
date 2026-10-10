@@ -73,7 +73,7 @@ export const getAssetBulkActions = ($t: MessageFormatter) => {
       // clicked: a locked selection can only go into a locked album, same as opening this from
       // the Locked Folder view itself.
       const lockedOnly = assets.some((asset) => asset.visibility === AssetVisibility.Locked);
-      modalManager.show(AssetAddToAlbumModal, { assetIds: assets.map((asset) => asset.id), lockedOnly });
+      return modalManager.show(AssetAddToAlbumModal, { assetIds: assets.map((asset) => asset.id), lockedOnly });
     },
   };
 
