@@ -1,6 +1,6 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { BulkIdErrorReason } from 'src/dtos/asset-ids.response.dto';
-import { AlbumUserRole, AssetOrder, UserMetadataKey } from 'src/enum';
+import { AlbumUserRole, AssetOrder, AssetVisibility, JobName, UserMetadataKey } from 'src/enum';
 import { AlbumService } from 'src/services/album.service';
 import { AlbumUserFactory } from 'test/factories/album-user.factory';
 import { AlbumFactory } from 'test/factories/album.factory';
@@ -1455,6 +1455,200 @@ describe(AlbumService.name, () => {
       );
 
       expect(mocks.album.addAssetIdsToAlbums).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('lock', () => {
+    it('should skip albums the user does not own', async () => {
+      const album = AlbumFactory.create();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set());
+
+      await expect(sut.lock(AuthFactory.create(), { ids: [album.id] })).resolves.toEqual([
+        {
+          id: album.id,
+          success: false,
+          error: BulkIdErrorReason.NO_PERMISSION,
+          assetCount: 0,
+          skippedAssetCount: 0,
+          removed: false,
+        },
+      ]);
+
+      expect(mocks.album.convert).not.toHaveBeenCalled();
+      expect(mocks.job.queueAll).not.toHaveBeenCalled();
+    });
+
+    it('should not lock an album that is already locked', async () => {
+      const album = AlbumFactory.from({ isLocked: true }).build();
+      const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+      const auth = AuthFactory.from(owner).session({ hasElevatedPermission: true }).build();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+
+      await expect(sut.lock(auth, { ids: [album.id] })).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(mocks.album.convert).not.toHaveBeenCalled();
+    });
+
+    it('should move the owned assets into a new locked album and remove the emptied source', async () => {
+      const [asset1, asset2] = [AssetFactory.create(), AssetFactory.create()];
+      const album = AlbumFactory.from({ albumThumbnailAssetId: asset2.id }).build();
+      const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+      const newAlbumId = newUuid();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+      mocks.album.getAllAssetIds.mockResolvedValue([asset1.id, asset2.id]);
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset1.id, asset2.id]));
+      mocks.album.convert.mockResolvedValue([{ sourceAlbumId: album.id, albumId: newAlbumId, removed: true }]);
+
+      await expect(sut.lock(AuthFactory.create(owner), { ids: [album.id] })).resolves.toEqual([
+        { id: album.id, success: true, albumId: newAlbumId, assetCount: 2, skippedAssetCount: 0, removed: true },
+      ]);
+
+      expect(mocks.access.asset.checkOwnerAccess).toHaveBeenCalledWith(
+        owner.id,
+        new Set([asset1.id, asset2.id]),
+        undefined,
+      );
+      expect(mocks.album.convert).toHaveBeenCalledWith({
+        ownerId: owner.id,
+        visibility: AssetVisibility.Locked,
+        albums: [
+          {
+            sourceAlbumId: album.id,
+            album: {
+              albumName: album.albumName,
+              description: album.description,
+              order: album.order,
+              albumThumbnailAssetId: asset2.id,
+              isLocked: true,
+            },
+            assetIds: [asset1.id, asset2.id],
+          },
+        ],
+      });
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([
+        { name: JobName.SidecarWrite, data: { id: asset1.id } },
+        { name: JobName.SidecarWrite, data: { id: asset2.id } },
+      ]);
+    });
+
+    it('should leave assets of other users in the source album', async () => {
+      const [asset1, asset2] = [AssetFactory.create(), AssetFactory.create()];
+      const album = AlbumFactory.from({ albumThumbnailAssetId: asset2.id }).build();
+      const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+      const newAlbumId = newUuid();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+      mocks.album.getAllAssetIds.mockResolvedValue([asset1.id, asset2.id]);
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset1.id]));
+      mocks.album.convert.mockResolvedValue([{ sourceAlbumId: album.id, albumId: newAlbumId, removed: false }]);
+
+      await expect(sut.lock(AuthFactory.create(owner), { ids: [album.id] })).resolves.toEqual([
+        { id: album.id, success: true, albumId: newAlbumId, assetCount: 1, skippedAssetCount: 1, removed: false },
+      ]);
+
+      expect(mocks.album.convert).toHaveBeenCalledWith({
+        ownerId: owner.id,
+        visibility: AssetVisibility.Locked,
+        albums: [
+          {
+            sourceAlbumId: album.id,
+            album: {
+              albumName: album.albumName,
+              description: album.description,
+              order: album.order,
+              albumThumbnailAssetId: asset1.id,
+              isLocked: true,
+            },
+            assetIds: [asset1.id],
+          },
+        ],
+      });
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.SidecarWrite, data: { id: asset1.id } }]);
+    });
+
+    it('should move an asset shared by several albums into each new album', async () => {
+      const asset = AssetFactory.create();
+      const album1 = AlbumFactory.create();
+      const { user: owner } = album1.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+      const album2 = AlbumFactory.from().owner(owner).build();
+      const [newAlbumId1, newAlbumId2] = [newUuid(), newUuid()];
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album1.id, album2.id]));
+      mocks.album.getById.mockResolvedValueOnce(getForAlbum(album1)).mockResolvedValueOnce(getForAlbum(album2));
+      mocks.album.getAllAssetIds.mockResolvedValue([asset.id]);
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset.id]));
+      mocks.album.convert.mockResolvedValue([
+        { sourceAlbumId: album1.id, albumId: newAlbumId1, removed: true },
+        { sourceAlbumId: album2.id, albumId: newAlbumId2, removed: true },
+      ]);
+
+      await expect(sut.lock(AuthFactory.create(owner), { ids: [album1.id, album2.id] })).resolves.toEqual([
+        { id: album1.id, success: true, albumId: newAlbumId1, assetCount: 1, skippedAssetCount: 0, removed: true },
+        { id: album2.id, success: true, albumId: newAlbumId2, assetCount: 1, skippedAssetCount: 0, removed: true },
+      ]);
+
+      expect(mocks.album.convert).toHaveBeenCalledWith({
+        ownerId: owner.id,
+        visibility: AssetVisibility.Locked,
+        albums: [
+          expect.objectContaining({ sourceAlbumId: album1.id, assetIds: [asset.id] }),
+          expect.objectContaining({ sourceAlbumId: album2.id, assetIds: [asset.id] }),
+        ],
+      });
+      expect(mocks.job.queueAll).toHaveBeenCalledTimes(1);
+      expect(mocks.job.queueAll).toHaveBeenCalledWith([{ name: JobName.SidecarWrite, data: { id: asset.id } }]);
+    });
+  });
+
+  describe('unlock', () => {
+    it('should require an elevated session', async () => {
+      const album = AlbumFactory.from({ isLocked: true }).build();
+      const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+
+      await expect(sut.unlock(AuthFactory.create(owner), { ids: [album.id] })).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+
+      expect(mocks.access.album.checkOwnerAccess).not.toHaveBeenCalled();
+      expect(mocks.album.convert).not.toHaveBeenCalled();
+    });
+
+    it('should move the owned assets into a new unlocked album', async () => {
+      const asset = AssetFactory.create();
+      const album = AlbumFactory.from({ isLocked: true, albumThumbnailAssetId: asset.id }).build();
+      const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
+      const auth = AuthFactory.from(owner).session({ hasElevatedPermission: true }).build();
+      const newAlbumId = newUuid();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getById.mockResolvedValue(getForAlbum(album));
+      mocks.album.getAllAssetIds.mockResolvedValue([asset.id]);
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset.id]));
+      mocks.album.convert.mockResolvedValue([{ sourceAlbumId: album.id, albumId: newAlbumId, removed: true }]);
+
+      await expect(sut.unlock(auth, { ids: [album.id] })).resolves.toEqual([
+        { id: album.id, success: true, albumId: newAlbumId, assetCount: 1, skippedAssetCount: 0, removed: true },
+      ]);
+
+      expect(mocks.access.album.checkOwnerAccess).toHaveBeenCalledWith(owner.id, new Set([album.id]), true);
+      expect(mocks.access.asset.checkOwnerAccess).toHaveBeenCalledWith(owner.id, new Set([asset.id]), true);
+      expect(mocks.album.convert).toHaveBeenCalledWith({
+        ownerId: owner.id,
+        visibility: AssetVisibility.Timeline,
+        albums: [
+          {
+            sourceAlbumId: album.id,
+            album: {
+              albumName: album.albumName,
+              description: album.description,
+              order: album.order,
+              albumThumbnailAssetId: asset.id,
+              isLocked: false,
+            },
+            assetIds: [asset.id],
+          },
+        ],
+      });
     });
   });
 

@@ -10,15 +10,23 @@ import {
   Updateable,
 } from 'kysely';
 import { jsonArrayFrom, jsonObjectFrom } from 'kysely/helpers/postgres';
+import { chunk } from 'lodash';
 import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database';
-import { Chunked, ChunkedArray, ChunkedSet, DummyValue, GenerateSql } from 'src/decorators';
+import {
+  Chunked,
+  ChunkedArray,
+  ChunkedSet,
+  DATABASE_PARAMETER_CHUNK_SIZE,
+  DummyValue,
+  GenerateSql,
+} from 'src/decorators';
 import { AlbumUserCreateDto, MapAlbumDto } from 'src/dtos/album.dto';
 import { AlbumUserRole, AssetVisibility } from 'src/enum';
 import { DB } from 'src/schema';
 import { AlbumTable } from 'src/schema/tables/album.table';
 import { AssetExifTable } from 'src/schema/tables/asset-exif.table';
-import { asUuid, dummy, withDefaultVisibility } from 'src/utils/database';
+import { anyUuid, asUuid, dummy, withDefaultVisibility } from 'src/utils/database';
 
 export interface AlbumAssetCount {
   albumId: string;
@@ -30,6 +38,12 @@ export interface AlbumAssetCount {
 
 export interface AlbumInfoOptions {
   withAssets: boolean;
+}
+
+export interface AlbumConversion {
+  sourceAlbumId: string;
+  album: Insertable<AlbumTable>;
+  assetIds: string[];
 }
 
 const withAlbumUsers = (authUserId?: string) => (eb: ExpressionBuilder<DB, 'album'>) =>
@@ -302,7 +316,9 @@ export class AlbumRepository {
     await this.db
       .deleteFrom('album_asset')
       .where('album_asset.assetId', 'in', assetIds)
-      .where('album_asset.albumId', 'in', (eb) => eb.selectFrom('album').select('album.id').where('isLocked', '=', true))
+      .where('album_asset.albumId', 'in', (eb) =>
+        eb.selectFrom('album').select('album.id').where('isLocked', '=', true),
+      )
       .execute();
   }
 
@@ -440,6 +456,59 @@ export class AlbumRepository {
 
   async delete(id: string): Promise<void> {
     await this.db.deleteFrom('album').where('id', '=', id).execute();
+  }
+
+  /**
+   * Move assets out of the given albums into one fresh album per source album, owned by `ownerId`
+   * only, and give them the new visibility -- all in one transaction. Changing the visibility
+   * strips every album membership the assets had, so each new album is filled from the asset
+   * list captured for its source album. A source album left without assets is removed.
+   */
+  async convert({
+    ownerId,
+    visibility,
+    albums,
+  }: {
+    ownerId: string;
+    visibility: AssetVisibility;
+    albums: AlbumConversion[];
+  }) {
+    const assetIds = [...new Set(albums.flatMap(({ assetIds }) => assetIds))];
+
+    return this.db.transaction().execute(async (tx) => {
+      for (const assetIdChunk of chunk(assetIds, DATABASE_PARAMETER_CHUNK_SIZE)) {
+        await tx.updateTable('asset').set({ visibility }).where('id', '=', anyUuid(assetIdChunk)).execute();
+        await tx.deleteFrom('album_asset').where('assetId', '=', anyUuid(assetIdChunk)).execute();
+      }
+
+      const results: { sourceAlbumId: string; albumId: string; removed: boolean }[] = [];
+      for (const { sourceAlbumId, album, assetIds } of albums) {
+        const { id: albumId } = await tx.insertInto('album').values(album).returning('id').executeTakeFirstOrThrow();
+        await tx.insertInto('album_user').values({ albumId, userId: ownerId, role: AlbumUserRole.Owner }).execute();
+        if (assetIds.length > 0) {
+          await tx
+            .insertInto('album_asset')
+            .expression((eb) =>
+              eb
+                .selectFrom(dummy)
+                .select([asUuid(albumId).as('albumId'), sql`unnest(${assetIds}::uuid[])`.as('assetId')]),
+            )
+            .execute();
+        }
+
+        const { numDeletedRows } = await tx
+          .deleteFrom('album')
+          .where('id', '=', sourceAlbumId)
+          .where((eb) =>
+            eb.not(eb.exists(eb.selectFrom('album_asset').select('assetId').where('albumId', '=', sourceAlbumId))),
+          )
+          .executeTakeFirst();
+
+        results.push({ sourceAlbumId, albumId, removed: Number(numDeletedRows) > 0 });
+      }
+
+      return results;
+    });
   }
 
   @Chunked({ chunkSize: 30_000 })

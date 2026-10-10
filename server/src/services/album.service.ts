@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   AddUsersDto,
+  AlbumLockResponseDto,
   AlbumResponseDto,
   AlbumsAddAssetsDto,
   AlbumsAddAssetsResponseDto,
@@ -14,9 +15,10 @@ import {
 import { BulkIdErrorReason, BulkIdResponseDto, BulkIdsDto } from 'src/dtos/asset-ids.response.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
 import { MapMarkerResponseDto } from 'src/dtos/map.dto';
-import { AlbumUserRole, Permission } from 'src/enum';
-import { AlbumAssetCount, AlbumInfoOptions } from 'src/repositories/album.repository';
+import { AlbumUserRole, AssetVisibility, JobName, Permission } from 'src/enum';
+import { AlbumAssetCount, AlbumConversion, AlbumInfoOptions } from 'src/repositories/album.repository';
 import { BaseService } from 'src/services/base.service';
+import { requireElevatedPermission } from 'src/utils/access';
 import { addAssets, removeAssets } from 'src/utils/asset.util';
 import { asDateTimeString } from 'src/utils/date';
 import { getPreferences } from 'src/utils/preferences';
@@ -375,6 +377,115 @@ export class AlbumService extends BaseService {
     }
 
     return results;
+  }
+
+  lock(auth: AuthDto, dto: BulkIdsDto): Promise<AlbumLockResponseDto[]> {
+    return this.convert(auth, dto.ids, true);
+  }
+
+  unlock(auth: AuthDto, dto: BulkIdsDto): Promise<AlbumLockResponseDto[]> {
+    return this.convert(auth, dto.ids, false);
+  }
+
+  /**
+   * Move each album's assets into a fresh album of the other kind: into a new locked album when
+   * locking, into a new ordinary album when unlocking. Only the requester's own assets move; any
+   * others stay behind in the source album, which is removed once it is empty.
+   */
+  private async convert(auth: AuthDto, ids: string[], isLocked: boolean): Promise<AlbumLockResponseDto[]> {
+    if (!isLocked) {
+      requireElevatedPermission(auth);
+    }
+
+    const albumIds = [...new Set(ids)];
+    // Converting replaces the album, so it needs the same owner access as deleting it. For a
+    // non-elevated session that check also hides locked albums, so unlocking needs elevation.
+    const allowedAlbumIds = await this.checkAccess({ auth, permission: Permission.AlbumDelete, ids: albumIds });
+
+    const albums = [];
+    for (const id of albumIds) {
+      if (!allowedAlbumIds.has(id)) {
+        continue;
+      }
+
+      const album = await this.findOrFail(id, auth.user.id, { withAssets: false });
+      if (album.isLocked === isLocked) {
+        throw new BadRequestException(isLocked ? 'Album is already locked' : 'Album is not locked');
+      }
+
+      albums.push(album);
+    }
+
+    // Changing the visibility strips every album membership, so capture which assets are in which
+    // album before anything is written.
+    const albumAssetIds = new Map<string, string[]>();
+    for (const album of albums) {
+      albumAssetIds.set(album.id, await this.albumRepository.getAllAssetIds(album.id));
+    }
+
+    // Only the requester's own assets can change visibility; anything else stays where it is.
+    const ownedAssetIds = await this.checkAccess({
+      auth,
+      permission: Permission.AssetUpdate,
+      ids: [...albumAssetIds.values()].flat(),
+    });
+
+    const conversions = new Map<string, AlbumConversion>();
+    for (const album of albums) {
+      const assetIds = albumAssetIds.get(album.id)!.filter((assetId) => ownedAssetIds.has(assetId));
+      const keepsThumbnail = !!album.albumThumbnailAssetId && assetIds.includes(album.albumThumbnailAssetId);
+      conversions.set(album.id, {
+        sourceAlbumId: album.id,
+        album: {
+          albumName: album.albumName,
+          description: album.description,
+          order: album.order,
+          albumThumbnailAssetId: keepsThumbnail ? album.albumThumbnailAssetId : (assetIds[0] ?? null),
+          isLocked,
+        },
+        assetIds,
+      });
+    }
+
+    const converted = new Map<string, { albumId: string; removed: boolean }>();
+    if (conversions.size > 0) {
+      const results = await this.albumRepository.convert({
+        ownerId: auth.user.id,
+        visibility: isLocked ? AssetVisibility.Locked : AssetVisibility.Timeline,
+        albums: [...conversions.values()],
+      });
+      for (const result of results) {
+        converted.set(result.sourceAlbumId, result);
+      }
+    }
+
+    if (ownedAssetIds.size > 0) {
+      await this.jobRepository.queueAll([...ownedAssetIds].map((id) => ({ name: JobName.SidecarWrite, data: { id } })));
+    }
+
+    return albumIds.map((id) => {
+      const conversion = conversions.get(id);
+      const result = converted.get(id);
+      if (!conversion || !result) {
+        return {
+          id,
+          success: false,
+          error: BulkIdErrorReason.NO_PERMISSION,
+          assetCount: 0,
+          skippedAssetCount: 0,
+          removed: false,
+        };
+      }
+
+      return {
+        id,
+        success: true,
+        albumId: result.albumId,
+        assetCount: conversion.assetIds.length,
+        skippedAssetCount: albumAssetIds.get(id)!.length - conversion.assetIds.length,
+        removed: result.removed,
+      };
+    });
   }
 
   async addUsers(auth: AuthDto, id: string, { albumUsers }: AddUsersDto): Promise<AlbumResponseDto> {
