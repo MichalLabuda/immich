@@ -17,8 +17,9 @@ import {
   retrieveRange as retrieveRangeUtil,
 } from '$lib/managers/timeline-manager/internal/search-support.svelte';
 import { WebsocketSupport } from '$lib/managers/timeline-manager/internal/websocket-support.svelte';
+import { userPreferencesManager } from '$lib/managers/user-preferences-manager.svelte';
+import { updateStackedAssetInTimeline } from '$lib/utils/actions';
 import { CancellableTask } from '$lib/utils/cancellable-task';
-import { PersistedLocalStorage } from '$lib/utils/persisted';
 import {
   getOrderingDate,
   isAssetResponseDto,
@@ -94,19 +95,18 @@ export class TimelineManager extends VirtualScrollManager {
   #options: TimelineManagerOptions = TimelineManager.#INIT_OPTIONS;
   #updatingViewportProximities = false;
   #scrollableElement: HTMLElement | undefined = $state();
-  #showAssetOwners = new PersistedLocalStorage<boolean>('album-show-asset-owners', false);
   #unsubscribes: Array<() => void> = [];
 
   get showAssetOwners() {
-    return this.#showAssetOwners.current;
+    return userPreferencesManager.showAssetOwners;
   }
 
   setShowAssetOwners(value: boolean) {
-    this.#showAssetOwners.current = value;
+    userPreferencesManager.showAssetOwners = value;
   }
 
   toggleShowAssetOwners() {
-    this.#showAssetOwners.current = !this.#showAssetOwners.current;
+    userPreferencesManager.showAssetOwners = !userPreferencesManager.showAssetOwners;
   }
 
   constructor() {
@@ -123,6 +123,38 @@ export class TimelineManager extends VirtualScrollManager {
           }
         },
         AssetsUnarchive: (assets) => this.upsertAssets(assets),
+        AlbumRemoveAssets: ({ assetIds, albumIds }) => {
+          if (this.#options.albumId && albumIds.includes(this.#options.albumId)) {
+            this.removeAssets(assetIds);
+          }
+        },
+        StackCreate: (stack) => {
+          if (this.#options.withStacked) {
+            updateStackedAssetInTimeline(this, stack);
+          }
+        },
+        StackDelete: ({ assets }) => {
+          if (!this.#options.withStacked) {
+            return;
+          }
+          this.update(
+            assets.map((asset) => asset.id),
+            (asset) => (asset.stack = null),
+          );
+          this.upsertAssets(assets.map((asset) => toTimelineAsset(asset)));
+        },
+        StackUpdate: (stack) => {
+          if (!this.#options.withStacked) {
+            return;
+          }
+          // unstack and re-stack
+          this.update(
+            stack.assets.map((asset) => asset.id),
+            (asset) => (asset.stack = null),
+          );
+          this.upsertAssets(stack.assets.map((asset) => toTimelineAsset(asset)));
+          updateStackedAssetInTimeline(this, stack);
+        },
       }),
     );
   }
@@ -357,10 +389,7 @@ export class TimelineManager extends VirtualScrollManager {
   }
 
   async loadTimelineMonth(yearMonth: TimelineYearMonth, options?: { cancelable: boolean }): Promise<void> {
-    let cancelable = true;
-    if (options) {
-      cancelable = options.cancelable;
-    }
+    const cancelable = options?.cancelable ?? true;
     const timelineMonth = getTimelineMonthByDate(this, yearMonth);
     if (!timelineMonth) {
       return;
@@ -383,6 +412,12 @@ export class TimelineManager extends VirtualScrollManager {
     const notUpdated = this.#updateAssets(assets);
     const notExcluded = notUpdated.filter((asset) => !this.isExcluded(asset));
     this.addAssetsUpsertSegments([...notExcluded]);
+  }
+
+  upsertAssetsFromLiveEvent(assets: TimelineAsset[]) {
+    const notUpdated = this.#updateAssets(assets);
+    const insertable = notUpdated.filter((asset) => this.canInsertAssetFromLiveEvent(asset));
+    this.addAssetsUpsertSegments(insertable);
   }
 
   async findTimelineMonthForAsset(asset: AssetDescriptor | AssetResponseDto) {
@@ -517,10 +552,7 @@ export class TimelineManager extends VirtualScrollManager {
     // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const idsToUpdate = new Set(cache.keys());
     const result = this.#runAssetCallback(idsToUpdate, (asset) => void updateObject(asset, cache.get(asset.id)));
-    const notUpdated: TimelineAsset[] = [];
-    for (const assetId of result.notUpdated) {
-      notUpdated.push(cache.get(assetId)!);
-    }
+    const notUpdated: TimelineAsset[] = Array.from(result.notUpdated, (assetId) => cache.get(assetId)!);
     return notUpdated;
   }
 
@@ -627,8 +659,25 @@ export class TimelineManager extends VirtualScrollManager {
     );
   }
 
+  canInsertAssetFromLiveEvent(asset: TimelineAsset) {
+    if (this.isExcluded(asset)) {
+      return false;
+    }
+    if (this.#options.albumId || this.#options.personId || this.#options.timelineAlbumId) {
+      return false;
+    }
+    if (this.#options.userId && !this.#options.withPartners && asset.ownerId !== this.#options.userId) {
+      return false;
+    }
+    return true;
+  }
+
   getAssetOrder() {
     return this.#options.order ?? AssetOrder.Desc;
+  }
+
+  getOrderBy() {
+    return this.#options.orderBy ?? AssetOrderBy.TakenAt;
   }
 
   protected postCreateSegments(): void {

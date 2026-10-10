@@ -1,18 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import {
-  ExpressionBuilder,
-  Insertable,
-  Kysely,
-  NotNull,
-  Selectable,
-  ShallowDehydrateObject,
+  type ExpressionBuilder,
+  type Insertable,
+  type Kysely,
+  type NotNull,
+  type Selectable,
+  type ShallowDehydrateObject,
+  type Updateable,
   sql,
-  Updateable,
 } from 'kysely';
 import { jsonArrayFrom, jsonObjectFrom } from 'kysely/helpers/postgres';
-import { chunk } from 'lodash';
+import { chunk } from 'lodash-es';
 import { InjectKysely } from 'nestjs-kysely';
-import { columns } from 'src/database';
+import { columns } from 'src/database.js';
 import {
   Chunked,
   ChunkedArray,
@@ -20,13 +20,13 @@ import {
   DATABASE_PARAMETER_CHUNK_SIZE,
   DummyValue,
   GenerateSql,
-} from 'src/decorators';
-import { AlbumUserCreateDto, MapAlbumDto } from 'src/dtos/album.dto';
-import { AlbumUserRole, AssetVisibility } from 'src/enum';
-import { DB } from 'src/schema';
-import { AlbumTable } from 'src/schema/tables/album.table';
-import { AssetExifTable } from 'src/schema/tables/asset-exif.table';
-import { anyUuid, asUuid, dummy, withDefaultVisibility } from 'src/utils/database';
+} from 'src/decorators.js';
+import { AlbumUserCreateDto, MapAlbumDto } from 'src/dtos/album.dto.js';
+import { AlbumUserRole, AssetVisibility } from 'src/enum.js';
+import { DB } from 'src/schema/index.js';
+import { AlbumTable } from 'src/schema/tables/album.table.js';
+import { AssetExifTable } from 'src/schema/tables/asset-exif.table.js';
+import { anyUuid, asUuid, dummy, withDefaultVisibility } from 'src/utils/database.js';
 
 export interface AlbumAssetCount {
   albumId: string;
@@ -399,7 +399,7 @@ export class AlbumRepository {
     albumUsers: AlbumUserCreateDto[],
     authUserId: string,
   ) {
-    if (!albumUsers.some((u) => u.role === AlbumUserRole.Owner)) {
+    if (albumUsers.every((u) => u.role !== AlbumUserRole.Owner)) {
       throw new Error('Album must have an owner');
     }
 

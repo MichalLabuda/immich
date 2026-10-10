@@ -25,4 +25,4 @@
   };
 </script>
 
-<AlbumPickerModal onClose={handleClose} {lockedOnly} />
+<AlbumPickerModal selectedItemsCount={assetIds.length} onClose={handleClose} {lockedOnly} />

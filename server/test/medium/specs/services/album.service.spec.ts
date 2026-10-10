@@ -1,25 +1,26 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { Kysely } from 'kysely';
-import { BulkIdErrorReason } from 'src/dtos/asset-ids.response.dto';
-import { AssetVisibility, JobName } from 'src/enum';
-import { AccessRepository } from 'src/repositories/access.repository';
-import { AlbumRepository } from 'src/repositories/album.repository';
-import { AssetRepository } from 'src/repositories/asset.repository';
-import { EventRepository } from 'src/repositories/event.repository';
-import { JobRepository } from 'src/repositories/job.repository';
-import { LoggingRepository } from 'src/repositories/logging.repository';
-import { DB } from 'src/schema';
-import { AlbumService } from 'src/services/album.service';
-import { newMediumService } from 'test/medium.factory';
-import { factory } from 'test/small.factory';
-import { getKyselyDB } from 'test/utils';
+import { BulkIdErrorReason } from 'src/dtos/asset-ids.response.dto.js';
+import { AssetVisibility, JobName } from 'src/enum.js';
+import { AccessRepository } from 'src/repositories/access.repository.js';
+import { AlbumRepository } from 'src/repositories/album.repository.js';
+import { AssetRepository } from 'src/repositories/asset.repository.js';
+import { EventRepository } from 'src/repositories/event.repository.js';
+import { JobRepository } from 'src/repositories/job.repository.js';
+import { LoggingRepository } from 'src/repositories/logging.repository.js';
+import { UserRepository } from 'src/repositories/user.repository.js';
+import { DB } from 'src/schema/index.js';
+import { AlbumService } from 'src/services/album.service.js';
+import { newMediumService } from 'test/medium.factory.js';
+import { factory } from 'test/small.factory.js';
+import { getKyselyDB } from 'test/utils.js';
 
 let defaultDatabase: Kysely<DB>;
 
 const setup = (db?: Kysely<DB>) => {
   const { sut, ctx } = newMediumService(AlbumService, {
     database: db || defaultDatabase,
-    real: [AccessRepository, AlbumRepository, AssetRepository],
+    real: [AccessRepository, AlbumRepository, AssetRepository, UserRepository],
     mock: [EventRepository, JobRepository, LoggingRepository],
   });
   ctx.getMock(JobRepository).queueAll.mockResolvedValue();
@@ -31,6 +32,38 @@ beforeAll(async () => {
 });
 
 describe(AlbumService.name, () => {
+  describe('removeAssets', () => {
+    it('should not remove assets from an album of another user', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const { user: otherUser } = await ctx.newUser();
+      const { asset } = await ctx.newAsset({ ownerId: user.id });
+      const { album } = await ctx.newAlbum({ ownerId: user.id }, [asset.id]);
+
+      await expect(sut.removeAssets(factory.auth({ user: otherUser }), album.id, { ids: [asset.id] })).rejects.toThrow(
+        'Not found or no albumAsset.delete access',
+      );
+      await expect(ctx.get(AlbumRepository).getAssetIds(album.id, [asset.id])).resolves.toContain(asset.id);
+    });
+  });
+
+  describe('database triggers', () => {
+    it('should cascade delete an album when the owner is deleted', async () => {
+      const { ctx } = setup();
+      const { user } = await ctx.newUser();
+      const { album } = await ctx.newAlbum({ ownerId: user.id });
+
+      await ctx.get(UserRepository).delete({ id: user.id }, true);
+
+      await expect(ctx.database.selectFrom('album').selectAll().where('id', '=', album.id).execute()).resolves.toEqual(
+        [],
+      );
+      await expect(
+        ctx.database.selectFrom('album_user').selectAll().where('albumId', '=', album.id).execute(),
+      ).resolves.toEqual([]);
+    });
+  });
+
   describe('lock', () => {
     it('should move the assets into a new locked album and remove the source album', async () => {
       const { sut, ctx } = setup();
