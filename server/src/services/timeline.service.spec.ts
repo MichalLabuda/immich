@@ -21,6 +21,7 @@ describe(TimelineService.name, () => {
       );
       expect(mocks.asset.getTimeBuckets).toHaveBeenCalledWith({
         userIds: [authStub.admin.user.id],
+        includeLockedAlbumAssets: false,
       });
     });
 
@@ -39,6 +40,7 @@ describe(TimelineService.name, () => {
       expect(mocks.asset.getTimeBuckets).toHaveBeenCalledWith({
         userIds: [authStub.admin.user.id],
         bbox: { west: -70, south: -30, east: 120, north: 55 },
+        includeLockedAlbumAssets: false,
       });
     });
   });
@@ -63,6 +65,8 @@ describe(TimelineService.name, () => {
         {
           timeBucket: 'bucket',
           albumId: 'album-id',
+          userIds: undefined,
+          includeLockedAlbumAssets: true,
         },
         authStub.admin,
       );
@@ -110,6 +114,7 @@ describe(TimelineService.name, () => {
           visibility: AssetVisibility.Timeline,
           withPartners: true,
           userIds: [authStub.admin.user.id],
+          includeLockedAlbumAssets: false,
         },
         authStub.admin,
       );
@@ -133,6 +138,7 @@ describe(TimelineService.name, () => {
           tagId: 'tag-123',
           timeBucket: 'bucket',
           userIds: [authStub.admin.user.id],
+          includeLockedAlbumAssets: false,
         },
         authStub.admin,
       );

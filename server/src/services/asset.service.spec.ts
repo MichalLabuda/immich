@@ -371,6 +371,7 @@ describe(AssetService.name, () => {
     it('should update all assets', async () => {
       const auth = AuthFactory.create();
       mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set(['asset-1', 'asset-2']));
+      mocks.asset.getLockedAssetIds.mockResolvedValue(new Set());
 
       await sut.updateAll(auth, { ids: ['asset-1', 'asset-2'], visibility: AssetVisibility.Archive });
 
@@ -396,6 +397,7 @@ describe(AssetService.name, () => {
 
     it('should update Assets table if visibility field is provided', async () => {
       mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set(['asset-1']));
+      mocks.asset.getLockedAssetIds.mockResolvedValue(new Set());
 
       await sut.updateAll(authStub.admin, {
         ids: ['asset-1'],

@@ -232,6 +232,7 @@ describe(AlbumService.name, () => {
           description: 'description',
           order: album.order,
           albumThumbnailAssetId: assetId,
+          isLocked: false,
         },
         [assetId],
         [
@@ -288,6 +289,7 @@ describe(AlbumService.name, () => {
           description: album.description,
           order: 'asc',
           albumThumbnailAssetId: assetId,
+          isLocked: false,
         },
         [assetId],
         [{ userId: owner.id, role: AlbumUserRole.Owner }, albumUser],
@@ -340,6 +342,7 @@ describe(AlbumService.name, () => {
           description: album.description,
           order: 'desc',
           albumThumbnailAssetId: assetId,
+          isLocked: false,
         },
         [assetId],
         [{ userId: owner.id, role: AlbumUserRole.Owner }],
@@ -952,6 +955,7 @@ describe(AlbumService.name, () => {
       const album2 = AlbumFactory.create();
       const [asset1, asset2, asset3] = [AssetFactory.create(), AssetFactory.create(), AssetFactory.create()];
       mocks.access.album.checkOwnerAccess.mockResolvedValueOnce(new Set([album1.id, album2.id]));
+      mocks.album.getLockedAlbumIds.mockResolvedValue(new Set());
       mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset1.id, asset2.id, asset3.id]));
       mocks.album.getById.mockResolvedValueOnce(getForAlbum(album1)).mockResolvedValueOnce(getForAlbum(album2));
       mocks.album.getAssetIds.mockResolvedValueOnce(new Set()).mockResolvedValueOnce(new Set());
@@ -1001,6 +1005,7 @@ describe(AlbumService.name, () => {
       const album2 = AlbumFactory.from({ albumThumbnailAssetId: asset.id }).build();
       const [asset1, asset2, asset3] = [AssetFactory.create(), AssetFactory.create(), AssetFactory.create()];
       mocks.access.album.checkOwnerAccess.mockResolvedValueOnce(new Set([album1.id, album2.id]));
+      mocks.album.getLockedAlbumIds.mockResolvedValue(new Set());
       mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset1.id, asset2.id, asset3.id]));
       mocks.album.getById.mockResolvedValueOnce(getForAlbum(album1)).mockResolvedValueOnce(getForAlbum(album2));
       mocks.album.getAssetIds.mockResolvedValueOnce(new Set()).mockResolvedValueOnce(new Set());
@@ -1051,6 +1056,7 @@ describe(AlbumService.name, () => {
       const { user: owner2 } = album2.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
       const [asset1, asset2, asset3] = [AssetFactory.create(), AssetFactory.create(), AssetFactory.create()];
       mocks.access.album.checkSharedAlbumAccess.mockResolvedValueOnce(new Set([album1.id, album2.id]));
+      mocks.album.getLockedAlbumIds.mockResolvedValue(new Set());
       mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset1.id, asset2.id, asset3.id]));
       mocks.album.getById.mockResolvedValueOnce(getForAlbum(album1)).mockResolvedValueOnce(getForAlbum(album2));
       mocks.album.getAssetIds.mockResolvedValueOnce(new Set()).mockResolvedValueOnce(new Set());
@@ -1135,6 +1141,7 @@ describe(AlbumService.name, () => {
         AssetFactory.create({ ownerId: user.id }),
       ];
       mocks.access.album.checkOwnerAccess.mockResolvedValueOnce(new Set([album1.id, album2.id]));
+      mocks.album.getLockedAlbumIds.mockResolvedValue(new Set());
       mocks.access.asset.checkPartnerAccess.mockResolvedValue(new Set([asset1.id, asset2.id, asset3.id]));
       mocks.album.getById.mockResolvedValueOnce(getForAlbum(album1)).mockResolvedValueOnce(getForAlbum(album2));
       mocks.album.getAssetIds.mockResolvedValueOnce(new Set()).mockResolvedValueOnce(new Set());
@@ -1188,6 +1195,8 @@ describe(AlbumService.name, () => {
       const album2 = AlbumFactory.create();
 
       mocks.access.album.checkOwnerAccess.mockResolvedValueOnce(new Set([album1.id, album2.id]));
+
+      mocks.album.getLockedAlbumIds.mockResolvedValue(new Set());
       mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset1.id, asset2.id, asset3.id]));
       mocks.album.getAssetIds
         .mockResolvedValueOnce(new Set([asset1.id, asset2.id, asset3.id]))
@@ -1227,6 +1236,7 @@ describe(AlbumService.name, () => {
       mocks.access.album.checkOwnerAccess
         .mockResolvedValueOnce(new Set([album1.id]))
         .mockResolvedValueOnce(new Set([album2.id]));
+      mocks.album.getLockedAlbumIds.mockResolvedValue(new Set());
       mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset1.id, asset2.id, asset3.id]));
       mocks.album.getById.mockResolvedValueOnce(getForAlbum(album1)).mockResolvedValueOnce(getForAlbum(album2));
       mocks.album.getAssetIds.mockResolvedValue(new Set([asset1.id, asset2.id, asset3.id]));
@@ -1258,6 +1268,7 @@ describe(AlbumService.name, () => {
       mocks.access.album.checkSharedAlbumAccess
         .mockResolvedValueOnce(new Set([album1.id]))
         .mockResolvedValueOnce(new Set([album2.id]));
+      mocks.album.getLockedAlbumIds.mockResolvedValue(new Set());
       mocks.album.getById.mockResolvedValueOnce(getForAlbum(album1)).mockResolvedValueOnce(getForAlbum(album2));
       mocks.album.getAssetIds.mockResolvedValueOnce(new Set()).mockResolvedValueOnce(new Set());
 
