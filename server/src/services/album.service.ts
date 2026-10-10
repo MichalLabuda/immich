@@ -112,6 +112,10 @@ export class AlbumService extends BaseService {
   async create(auth: AuthDto, dto: CreateAlbumDto): Promise<AlbumResponseDto> {
     const albumUsers = (dto.albumUsers || []).filter(({ userId }) => userId !== auth.user.id);
 
+    if (dto.isLocked && albumUsers.length > 0) {
+      throw new BadRequestException('A locked album cannot be shared');
+    }
+
     for (const { userId } of albumUsers) {
       const exists = await this.userRepository.get(userId, {});
       if (!exists) {
@@ -377,6 +381,9 @@ export class AlbumService extends BaseService {
     await this.requireAccess({ auth, permission: Permission.AlbumShare, ids: [id] });
 
     const album = await this.findOrFail(id, auth.user.id, { withAssets: false });
+    if (album.isLocked) {
+      throw new BadRequestException('A locked album cannot be shared');
+    }
 
     for (const { userId, role } of albumUsers) {
       if (role === AlbumUserRole.Owner) {
