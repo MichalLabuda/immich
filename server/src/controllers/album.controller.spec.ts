@@ -76,6 +76,40 @@ describe(AlbumController.name, () => {
     });
   });
 
+  describe('POST /albums/lock', () => {
+    it('should be an authenticated route', async () => {
+      await request(ctx.getHttpServer())
+        .post('/albums/lock')
+        .send({ ids: [factory.uuid()] });
+      expect(ctx.authenticate).toHaveBeenCalled();
+    });
+
+    it('should reject an invalid id', async () => {
+      const { status, body } = await request(ctx.getHttpServer())
+        .post('/albums/lock')
+        .send({ ids: ['invalid'] });
+      expect(status).toEqual(400);
+      expect(body).toEqual(factory.responses.validationError([{ path: ['ids', 0], message: 'Invalid UUID' }]));
+    });
+  });
+
+  describe('POST /albums/unlock', () => {
+    it('should be an authenticated route', async () => {
+      await request(ctx.getHttpServer())
+        .post('/albums/unlock')
+        .send({ ids: [factory.uuid()] });
+      expect(ctx.authenticate).toHaveBeenCalled();
+    });
+
+    it('should reject an invalid id', async () => {
+      const { status, body } = await request(ctx.getHttpServer())
+        .post('/albums/unlock')
+        .send({ ids: ['invalid'] });
+      expect(status).toEqual(400);
+      expect(body).toEqual(factory.responses.validationError([{ path: ['ids', 0], message: 'Invalid UUID' }]));
+    });
+  });
+
   describe('PATCH /albums/:id', () => {
     it('should be an authenticated route', async () => {
       await request(ctx.getHttpServer()).patch(`/albums/${factory.uuid()}`).send({ albumName: 'New album name' });

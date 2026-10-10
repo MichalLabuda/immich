@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { Endpoint, HistoryBuilder } from 'src/decorators';
 import {
   AddUsersDto,
+  AlbumLockResponseDto,
   AlbumResponseDto,
   AlbumsAddAssetsDto,
   AlbumsAddAssetsResponseDto,
@@ -134,6 +135,30 @@ export class AlbumController {
   })
   addAssetsToAlbums(@Auth() auth: AuthDto, @Body() dto: AlbumsAddAssetsDto): Promise<AlbumsAddAssetsResponseDto> {
     return this.service.addAssetsToAlbums(auth, dto);
+  }
+
+  @Post('lock')
+  @Authenticated({ permission: Permission.AlbumUpdate })
+  @Endpoint({
+    summary: 'Lock albums',
+    description:
+      'Move the assets of the given albums to the locked folder. Each album is replaced by a new locked album holding the assets owned by the authenticated user. An album that still holds assets of other users is kept.',
+    history: new HistoryBuilder().added('v3'),
+  })
+  lockAlbums(@Auth() auth: AuthDto, @Body() dto: BulkIdsDto): Promise<AlbumLockResponseDto[]> {
+    return this.service.lock(auth, dto);
+  }
+
+  @Post('unlock')
+  @Authenticated({ permission: Permission.AlbumUpdate })
+  @Endpoint({
+    summary: 'Unlock albums',
+    description:
+      'Move the assets of the given locked albums out of the locked folder. Requires an elevated session. Each album is replaced by a new album holding the assets owned by the authenticated user. An album that still holds assets of other users is kept.',
+    history: new HistoryBuilder().added('v3'),
+  })
+  unlockAlbums(@Auth() auth: AuthDto, @Body() dto: BulkIdsDto): Promise<AlbumLockResponseDto[]> {
+    return this.service.unlock(auth, dto);
   }
 
   @Delete(':id/assets')
