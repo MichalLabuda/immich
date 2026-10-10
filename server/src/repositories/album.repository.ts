@@ -265,9 +265,9 @@ export class AlbumRepository {
   }
 
   /**
-   * Which of the given album IDs are currently locked -- used to enforce the "an asset can only be
-   * added to one locked album at a time" rule server-side, mirroring the client-side check in the
-   * album picker, so any caller (not just the web UI) is held to the same rule.
+   * Which of the given album IDs are currently locked -- used to keep locked and unlocked albums
+   * apart when adding assets, mirroring the client-side filtering in the album picker, so any
+   * caller (not just the web UI) is held to the same rule.
    */
   @GenerateSql({ params: [[DummyValue.UUID]] })
   @ChunkedSet()
@@ -304,29 +304,6 @@ export class AlbumRepository {
       .where('album_asset.assetId', 'in', assetIds)
       .where('album_asset.albumId', 'in', (eb) => eb.selectFrom('album').select('album.id').where('isLocked', '=', true))
       .execute();
-  }
-
-  /**
-   * Of the given asset IDs, return the ones that already belong to some locked album other than
-   * `excludeAlbumId`. An asset can only ever be in one locked album at a time, so this is used to
-   * reject adding an already-locked-album asset into a different locked album, rather than
-   * silently moving it.
-   */
-  @GenerateSql({ params: [[DummyValue.UUID], DummyValue.UUID] })
-  async getAssetIdsInOtherLockedAlbums(assetIds: string[], excludeAlbumId: string): Promise<Set<string>> {
-    if (assetIds.length === 0) {
-      return new Set();
-    }
-
-    return this.db
-      .selectFrom('album_asset')
-      .innerJoin('album', 'album.id', 'album_asset.albumId')
-      .select('album_asset.assetId')
-      .where('album_asset.assetId', 'in', assetIds)
-      .where('album.isLocked', '=', true)
-      .where('album.id', '!=', excludeAlbumId)
-      .execute()
-      .then((rows) => new Set(rows.map((row) => row.assetId)));
   }
 
   /**
