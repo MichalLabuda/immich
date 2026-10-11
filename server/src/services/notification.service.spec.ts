@@ -194,6 +194,18 @@ describe(NotificationService.name, () => {
     });
   });
 
+  describe('onSessionLockEvent', () => {
+    it('should send a on_session_lock client event', () => {
+      vi.useFakeTimers();
+      sut.onSessionLock({ sessionId: 'id' });
+      expect(mocks.websocket.clientSend).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(500);
+
+      expect(mocks.websocket.clientSend).toHaveBeenCalledWith('on_session_lock', 'id', 'id');
+    });
+  });
+
   describe('onAssetTrash', () => {
     it('should send connected clients an websocket', () => {
       sut.onAssetTrash({ assetId: 'asset-id', userId: 'user-id' });

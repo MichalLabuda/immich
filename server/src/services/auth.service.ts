@@ -610,6 +610,7 @@ export class AuthService extends BaseService {
     }
 
     await this.sessionRepository.update(auth.session.id, { pinExpiresAt: null });
+    await this.eventRepository.emit('SessionLock', { sessionId: auth.session.id });
   }
 
   private async createLoginResponse(

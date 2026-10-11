@@ -75,6 +75,8 @@ type EventMap = {
 
   // session events
   SessionDelete: [{ sessionId: string }];
+  /** The session lost its PIN elevation (locked by the user) */
+  SessionLock: [{ sessionId: string }];
 
   // stack events
   StackCreate: [{ stackId: string; userId: string }];

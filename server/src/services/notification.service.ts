@@ -256,6 +256,13 @@ export class NotificationService extends BaseService {
     setTimeout(() => this.websocketRepository.clientSend('on_session_delete', sessionId, sessionId), 500);
   }
 
+  @OnEvent({ name: 'SessionLock' })
+  onSessionLock({ sessionId }: ArgOf<'SessionLock'>) {
+    // Every client of the session (other tabs, other windows) drops its elevated state at once,
+    // instead of only when its own expiry timer fires. After the response is sent.
+    setTimeout(() => this.websocketRepository.clientSend('on_session_lock', sessionId, sessionId), 500);
+  }
+
   async sendTestEmail(id: string, dto: SystemConfigSmtpDto, tempTemplate?: string) {
     const user = await this.userRepository.get(id, { withDeleted: false });
     if (!user) {
