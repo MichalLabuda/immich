@@ -37,6 +37,7 @@ abstract class RemoteAlbum with _$RemoteAlbum {
     required int assetCount,
     required String ownerName,
     required bool isShared,
+
     /// A locked album holds locked assets only and is shown inside the locked folder only.
     @Default(false) bool isLocked,
   }) = _RemoteAlbum;
