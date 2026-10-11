@@ -38,11 +38,13 @@ export const load = (async ({ params, url, depends }) => {
   }
 
   // A locked album is denied entirely to a non-elevated session by the server (it is not listed
-  // and its details are refused), so "locked" cannot be told apart from "not found" here. If the
-  // user has a PIN, send them to unlock the session and come back; the prompt's Cancel returns to
-  // the albums list.
-  const { isElevated, pinCode } = await getAuthStatus();
-  if (pinCode && !isElevated) {
+  // and its details are refused), so "locked" cannot be told apart from "not found" here. Treat
+  // it like the locked folder: a session that is not elevated goes to the PIN prompt, which asks
+  // to set up a PIN when there is none yet (locking an album needs no PIN, just like locking a
+  // photo, so this is how a user without a PIN reaches the album afterwards), and comes back
+  // here. The prompt's Cancel returns to the albums list.
+  const { isElevated } = await getAuthStatus();
+  if (!isElevated) {
     redirect(307, Route.pinPrompt({ continue: url.pathname + url.search }));
   }
 
