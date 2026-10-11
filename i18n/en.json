@@ -1507,7 +1507,7 @@
   "motion": "Motion",
   "move": "Move",
   "move_album_out_of_locked_folder": "Move album out of locked folder",
-  "move_album_out_of_locked_folder_confirmation": "Are you sure you want to move the album {album} out of your locked folder? Your assets will be visible in your library and removed from all other locked albums. Assets of other users stay in the original album.",
+  "move_album_out_of_locked_folder_confirmation": "Are you sure you want to move the album {album} out of your locked folder? Your assets will be visible in your library and removed from all other locked albums.",
   "move_album_to_locked_folder": "Move album to locked folder",
   "move_album_to_locked_folder_confirmation": "Are you sure you want to move the album {album} to your locked folder? Your assets will be hidden from your library and removed from all other albums. Sharing and shared links of this album will be lost. Assets of other users stay in the original album.",
   "move_out_locked_folder": "Move out of locked folder",
