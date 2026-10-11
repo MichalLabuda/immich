@@ -3277,7 +3277,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"remote_album_entity\" (\"id\" TEXT NOT NULL, \"name\" TEXT NOT NULL, \"description\" TEXT NOT NULL DEFAULT '', \"created_at\" TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP), \"updated_at\" TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP), \"thumbnail_asset_id\" TEXT NULL REFERENCES remote_asset_entity (id) ON DELETE SET NULL, \"is_activity_enabled\" INTEGER NOT NULL DEFAULT 1 CHECK (\"is_activity_enabled\" IN (0, 1)), \"order\" INTEGER NOT NULL, PRIMARY KEY (\"id\")) WITHOUT ROWID, STRICT;"
+          "sql": "CREATE TABLE IF NOT EXISTS \"remote_album_entity\" (\"id\" TEXT NOT NULL, \"name\" TEXT NOT NULL, \"description\" TEXT NOT NULL DEFAULT '', \"created_at\" TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP), \"updated_at\" TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP), \"thumbnail_asset_id\" TEXT NULL REFERENCES remote_asset_entity (id) ON DELETE SET NULL, \"is_activity_enabled\" INTEGER NOT NULL DEFAULT 1 CHECK (\"is_activity_enabled\" IN (0, 1)), \"order\" INTEGER NOT NULL, \"is_locked\" INTEGER NOT NULL DEFAULT 0 CHECK (\"is_locked\" IN (0, 1)), PRIMARY KEY (\"id\")) WITHOUT ROWID, STRICT;"
         }
       ]
     },
