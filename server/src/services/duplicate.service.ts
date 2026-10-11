@@ -8,6 +8,7 @@ import { DuplicateResolveDto, DuplicateResolveGroupDto, DuplicateResponseDto } f
 import { AssetStatus, AssetVisibility, JobName, JobStatus, Permission, QueueName } from 'src/enum.js';
 import { AssetDuplicateResult } from 'src/repositories/search.repository.js';
 import { BaseService } from 'src/services/base.service.js';
+import { hasElevatedPermission } from 'src/utils/access.js';
 import { suggestDuplicateKeepAssetIds } from 'src/utils/duplicate.js';
 import { batched, isDuplicateDetectionEnabled } from 'src/utils/misc.js';
 
@@ -157,7 +158,11 @@ export class DuplicateService extends BaseService {
 
     // Only merge metadata into the keeper when exactly one asset can absorb trashed duplicates.
     if (idsToKeep.length === 1 && idsToTrash.length > 0) {
-      const assetAlbumMap = await this.albumRepository.getByAssetIds(auth.user.id, [...groupAssetIds]);
+      const assetAlbumMap = await this.albumRepository.getByAssetIds(
+        auth.user.id,
+        [...groupAssetIds],
+        hasElevatedPermission(auth),
+      );
 
       const { assetUpdate, exifUpdate, mergedAlbumIds, mergedTagIds, mergedTagValues } = this.getSyncMergeResult(
         duplicateGroup.assets,

@@ -142,6 +142,7 @@ where
   )
   and "album_asset"."assetId" = $3
   and "album"."deletedAt" is null
+  and "album"."isLocked" = $4
 order by
   "album"."createdAt" desc
 
@@ -163,6 +164,7 @@ where
   )
   and "album_asset"."assetId" in ($2)
   and "album"."deletedAt" is null
+  and "album"."isLocked" = $3
 
 -- AlbumRepository.getMetadataForIds
 select
@@ -244,6 +246,7 @@ from
   and "album_user"."userId" = $2
 where
   "album"."deletedAt" is null
+  and "album"."isLocked" = $3
   and "album_user"."role" = 'owner'
   and (
     exists (
@@ -274,6 +277,7 @@ from
   and "album_user"."userId" = $1
 where
   "album"."deletedAt" is null
+  and "album"."isLocked" = $2
   and "album_user"."role" = 'owner'
   and (
     exists (

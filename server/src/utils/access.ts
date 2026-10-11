@@ -439,6 +439,8 @@ const checkOtherAccess = async (access: AccessRepository, request: OtherAccessRe
   }
 };
 
+export const hasElevatedPermission = (auth: AuthDto) => !!auth.session?.hasElevatedPermission;
+
 export const requireElevatedPermission = (auth: AuthDto) => {
   if (!auth.session?.hasElevatedPermission) {
     throw new UnauthorizedException('Elevated permission is required');

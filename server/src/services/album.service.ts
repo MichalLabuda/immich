@@ -18,7 +18,7 @@ import { MapMarkerResponseDto } from 'src/dtos/map.dto.js';
 import { AlbumUserRole, AssetVisibility, JobName, Permission } from 'src/enum.js';
 import { AlbumAssetCount, AlbumConversion, AlbumInfoOptions } from 'src/repositories/album.repository.js';
 import { BaseService } from 'src/services/base.service.js';
-import { requireElevatedPermission } from 'src/utils/access.js';
+import { hasElevatedPermission, requireElevatedPermission } from 'src/utils/access.js';
 import { addAssets, removeAssets } from 'src/utils/asset.util.js';
 import { asDateTimeString } from 'src/utils/date.js';
 import { findOrFail } from 'src/utils/misc.js';
@@ -27,10 +27,11 @@ import { getPreferences } from 'src/utils/preferences.js';
 @Injectable()
 export class AlbumService extends BaseService {
   async getStatistics(auth: AuthDto): Promise<AlbumStatisticsResponseDto> {
+    const withLocked = hasElevatedPermission(auth);
     const [owned, shared, notShared] = await Promise.all([
-      this.albumRepository.getAll(auth.user.id, { isOwned: true }),
-      this.albumRepository.getAll(auth.user.id, { isShared: true }),
-      this.albumRepository.getAll(auth.user.id, { isOwned: true, isShared: false }),
+      this.albumRepository.getAll(auth.user.id, { isOwned: true, withLocked }),
+      this.albumRepository.getAll(auth.user.id, { isShared: true, withLocked }),
+      this.albumRepository.getAll(auth.user.id, { isOwned: true, isShared: false, withLocked }),
     ]);
 
     return {
@@ -44,18 +45,22 @@ export class AlbumService extends BaseService {
     const ownerId = auth.user.id;
     await this.albumRepository.updateThumbnails();
 
+    // A locked album does not exist for a session that has not been elevated with the PIN: it is
+    // left out of every list entirely (name, count and thumbnail included), the same way the
+    // locked folder itself is hidden. PIN elevation is session-wide, not per-album: once
+    // elevated, the requester already has standing access to open any of their locked albums, so
+    // it is safe to list them with their real counts.
+    const withLocked = hasElevatedPermission(auth);
+
     const albums = assetId
-      ? await this.albumRepository.getByAssetId(ownerId, assetId)
-      : await this.albumRepository.getAll(ownerId, rest);
+      ? await this.albumRepository.getByAssetId(ownerId, assetId, withLocked)
+      : await this.albumRepository.getAll(ownerId, { ...rest, withLocked });
 
     if (albums.length === 0) {
       return [];
     }
 
-    // PIN elevation is session-wide, not per-album: once elevated, the requester already has
-    // standing access to open any of their locked albums with no extra friction. So it's safe
-    // to also reveal locked albums' real counts here rather than showing a stale 0.
-    const includeLockedAlbumAssets = !!auth.session?.hasElevatedPermission;
+    const includeLockedAlbumAssets = withLocked;
 
     // Get asset count for each album. Then map the result to an object:
     // { [albumId]: assetCount }

@@ -32,6 +32,46 @@ beforeAll(async () => {
 });
 
 describe(AlbumService.name, () => {
+  describe('getAll', () => {
+    it('should hide locked albums from a non-elevated session', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const { asset } = await ctx.newAsset({ ownerId: user.id, visibility: AssetVisibility.Locked });
+      const { album } = await ctx.newAlbum({ ownerId: user.id });
+      const { album: lockedAlbum } = await ctx.newAlbum({ ownerId: user.id, isLocked: true }, [asset.id]);
+      const auth = factory.auth({ user: { id: user.id }, session: { hasElevatedPermission: false } });
+
+      await expect(sut.getAll(auth, {})).resolves.toEqual([expect.objectContaining({ id: album.id, isLocked: false })]);
+      await expect(sut.getAll(auth, { isOwned: true })).resolves.toEqual([expect.objectContaining({ id: album.id })]);
+      await expect(sut.getAll(auth, { assetId: asset.id })).resolves.toEqual([]);
+      await expect(sut.getStatistics(auth)).resolves.toEqual({ owned: 1, shared: 0, notShared: 1 });
+      await expect(sut.get(auth, lockedAlbum.id)).rejects.toThrow('Not found or no album.read access');
+    });
+
+    it('should list locked albums for an elevated session', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const { asset } = await ctx.newAsset({ ownerId: user.id, visibility: AssetVisibility.Locked });
+      const { album } = await ctx.newAlbum({ ownerId: user.id });
+      const { album: lockedAlbum } = await ctx.newAlbum({ ownerId: user.id, isLocked: true }, [asset.id]);
+      const auth = factory.auth({ user: { id: user.id }, session: { hasElevatedPermission: true } });
+
+      await expect(sut.getAll(auth, {})).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: album.id, isLocked: false, assetCount: 0 }),
+          expect.objectContaining({ id: lockedAlbum.id, isLocked: true, assetCount: 1 }),
+        ]),
+      );
+      await expect(sut.getAll(auth, { assetId: asset.id })).resolves.toEqual([
+        expect.objectContaining({ id: lockedAlbum.id, isLocked: true }),
+      ]);
+      await expect(sut.getStatistics(auth)).resolves.toEqual({ owned: 2, shared: 0, notShared: 2 });
+      await expect(sut.get(auth, lockedAlbum.id)).resolves.toEqual(
+        expect.objectContaining({ id: lockedAlbum.id, isLocked: true, assetCount: 1 }),
+      );
+    });
+  });
+
   describe('removeAssets', () => {
     it('should not remove assets from an album of another user', async () => {
       const { sut, ctx } = setup();

@@ -33,13 +33,31 @@ describe(AlbumService.name, () => {
         notShared: 0,
       });
 
-      expect(mocks.album.getAll).toHaveBeenCalledWith(authStub.admin.user.id, { isOwned: true });
-      expect(mocks.album.getAll).toHaveBeenCalledWith(authStub.admin.user.id, { isShared: true });
-      expect(mocks.album.getAll).toHaveBeenCalledWith(authStub.admin.user.id, { isOwned: true, isShared: false });
+      expect(mocks.album.getAll).toHaveBeenCalledWith(authStub.admin.user.id, { isOwned: true, withLocked: false });
+      expect(mocks.album.getAll).toHaveBeenCalledWith(authStub.admin.user.id, { isShared: true, withLocked: false });
+      expect(mocks.album.getAll).toHaveBeenCalledWith(authStub.admin.user.id, {
+        isOwned: true,
+        isShared: false,
+        withLocked: false,
+      });
     });
   });
 
   describe('getAll', () => {
+    it('should include locked albums in the list for an elevated session', async () => {
+      const owner = UserFactory.create();
+      const auth = AuthFactory.from(owner).session({ hasElevatedPermission: true }).build();
+      mocks.album.getAll.mockResolvedValue([]);
+
+      await expect(sut.getAll(auth, {})).resolves.toEqual([]);
+
+      expect(mocks.album.getAll).toHaveBeenCalledWith(owner.id, {
+        isOwned: undefined,
+        isShared: undefined,
+        withLocked: true,
+      });
+    });
+
     it('gets list of albums for auth user', async () => {
       const album = AlbumFactory.from().albumUser().build();
       const { user: owner } = album.albumUsers.find(({ role }) => role === AlbumUserRole.Owner)!;
@@ -66,7 +84,11 @@ describe(AlbumService.name, () => {
       expect(result).toHaveLength(2);
       expect(result[0].id).toEqual(album.id);
       expect(result[1].id).toEqual(sharedWithUserAlbum.id);
-      expect(mocks.album.getAll).toHaveBeenCalledWith(owner.id, { isOwned: undefined, isShared: undefined });
+      expect(mocks.album.getAll).toHaveBeenCalledWith(owner.id, {
+        isOwned: undefined,
+        isShared: undefined,
+        withLocked: false,
+      });
     });
 
     it('gets list of albums that have a specific asset', async () => {
@@ -170,7 +192,7 @@ describe(AlbumService.name, () => {
 
       const result = await sut.getAll(AuthFactory.create(owner), { isOwned: true, isShared: true });
       expect(result).toHaveLength(1);
-      expect(mocks.album.getAll).toHaveBeenCalledWith(owner.id, { isOwned: true, isShared: true });
+      expect(mocks.album.getAll).toHaveBeenCalledWith(owner.id, { isOwned: true, isShared: true, withLocked: false });
     });
 
     it('returns empty list when isOwned=false and isShared=false', async () => {
@@ -180,7 +202,7 @@ describe(AlbumService.name, () => {
 
       const result = await sut.getAll(AuthFactory.create(owner), { isOwned: false, isShared: false });
       expect(result).toHaveLength(0);
-      expect(mocks.album.getAll).toHaveBeenCalledWith(owner.id, { isOwned: false, isShared: false });
+      expect(mocks.album.getAll).toHaveBeenCalledWith(owner.id, { isOwned: false, isShared: false, withLocked: false });
     });
   });
 

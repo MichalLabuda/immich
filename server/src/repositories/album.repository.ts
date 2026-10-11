@@ -40,6 +40,12 @@ export interface AlbumInfoOptions {
   withAssets: boolean;
 }
 
+export interface AlbumListOptions {
+  isOwned?: boolean;
+  isShared?: boolean;
+  withLocked?: boolean;
+}
+
 export interface AlbumConversion {
   sourceAlbumId: string;
   album: Insertable<AlbumTable>;
@@ -115,8 +121,12 @@ export class AlbumRepository {
       .executeTakeFirst();
   }
 
+  /**
+   * @param withLocked Include locked albums. Only pass true when the caller has verified the
+   * requester is elevated (or is not acting on behalf of a session at all).
+   */
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID] })
-  getByAssetId(ownerId: string, assetId: string) {
+  getByAssetId(ownerId: string, assetId: string, withLocked = false) {
     return this.db
       .selectFrom('album')
       .selectAll('album')
@@ -131,6 +141,7 @@ export class AlbumRepository {
       )
       .where('album_asset.assetId', '=', assetId)
       .where('album.deletedAt', 'is', null)
+      .$if(!withLocked, (qb) => qb.where('album.isLocked', '=', false))
       .select(withAlbumUsers(ownerId))
       .orderBy('album.createdAt', 'desc')
       .execute();
@@ -138,7 +149,7 @@ export class AlbumRepository {
 
   @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID]] })
   @ChunkedSet({ paramIndex: 1 })
-  async getByAssetIds(ownerId: string, assetIds: string[]): Promise<Map<string, string[]>> {
+  async getByAssetIds(ownerId: string, assetIds: string[], withLocked = false): Promise<Map<string, string[]>> {
     if (assetIds.length === 0) {
       return new Map();
     }
@@ -157,6 +168,7 @@ export class AlbumRepository {
       )
       .where('album_asset.assetId', 'in', assetIds)
       .where('album.deletedAt', 'is', null)
+      .$if(!withLocked, (qb) => qb.where('album.isLocked', '=', false))
       .select('album_asset.assetId')
       .execute();
 
@@ -211,13 +223,19 @@ export class AlbumRepository {
     );
   }
 
-  private buildAlbumBaseQuery(ownerId: string, { isOwned, isShared }: { isOwned?: boolean; isShared?: boolean }) {
+  /**
+   * `withLocked` includes locked albums. It defaults to false so that a locked album stays hidden
+   * from any session that has not been elevated with the PIN; callers pass the session's
+   * elevation state.
+   */
+  private buildAlbumBaseQuery(ownerId: string, { isOwned, isShared, withLocked }: AlbumListOptions) {
     return this.db
       .selectFrom('album')
       .innerJoin('album_user', (join) =>
         join.onRef('album_user.albumId', '=', 'album.id').on('album_user.userId', '=', ownerId),
       )
       .where('album.deletedAt', 'is', null)
+      .$if(!withLocked, (qb) => qb.where('album.isLocked', '=', false))
       .$if(isOwned === true, (qb) => qb.where('album_user.role', '=', sql.lit(AlbumUserRole.Owner)))
       .$if(isOwned === false, (qb) => qb.where('album_user.role', '!=', sql.lit(AlbumUserRole.Owner)))
       .$if(isShared !== undefined, (qb) =>
@@ -237,10 +255,7 @@ export class AlbumRepository {
   }
 
   @GenerateSql({ params: [DummyValue.UUID, { isOwned: true, isShared: true }] })
-  getAll(
-    ownerId: string,
-    options: { id?: string; isOwned?: boolean; isShared?: boolean; name?: string } = {},
-  ): Promise<MapAlbumDto[]> {
+  getAll(ownerId: string, options: AlbumListOptions & { id?: string; name?: string } = {}): Promise<MapAlbumDto[]> {
     return this.buildAlbumBaseQuery(ownerId, options)
       .selectAll('album')
       .select(withAlbumUsers(ownerId))
@@ -252,7 +267,7 @@ export class AlbumRepository {
   }
 
   @GenerateSql({ params: [DummyValue.UUID, { isOwned: true, isShared: true }] })
-  async getAllIds(ownerId: string, options: { isOwned?: boolean; isShared?: boolean } = {}): Promise<string[]> {
+  async getAllIds(ownerId: string, options: AlbumListOptions = {}): Promise<string[]> {
     const rows = await this.buildAlbumBaseQuery(ownerId, options)
       .select('album.id')
       .orderBy('album.createdAt', 'desc')

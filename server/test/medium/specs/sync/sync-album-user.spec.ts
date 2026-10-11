@@ -349,3 +349,20 @@ describe(SyncRequestType.AlbumUsersV1, () => {
     });
   });
 });
+
+describe('locked albums', () => {
+  it('should not sync the users of a locked album', async () => {
+    const { auth, ctx } = await setup();
+    const { album } = await ctx.newAlbum({ ownerId: auth.user.id });
+    await ctx.newAlbum({ ownerId: auth.user.id, isLocked: true });
+
+    const response = await ctx.syncStream(auth, [SyncRequestType.AlbumUsersV1]);
+    expect(response).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ albumId: album.id, userId: auth.user.id }),
+        type: SyncEntityType.AlbumUserV1,
+      }),
+      expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 }),
+    ]);
+  });
+});

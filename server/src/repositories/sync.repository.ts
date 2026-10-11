@@ -98,6 +98,14 @@ export class SyncRepository {
   }
 }
 
+/**
+ * Note on locked albums: they are never part of the sync stream (every album query below filters
+ * on `album.isLocked = false`). The stream is consumed by the mobile app, which has no locked-album
+ * UI and no per-album PIN gate, so a locked album would be shown as an ordinary album there.
+ * Converting an album between locked and unlocked always creates a new album row (and deletes the
+ * emptied source), so an album never flips `isLocked` in place and the audit tables keep deletes
+ * consistent for the client.
+ */
 export class BaseSync {
   constructor(protected db: Kysely<DB>) {}
 
@@ -150,11 +158,13 @@ class AlbumSync extends BaseSync {
   getCreatedAfter({ nowId, userId, afterCreateId }: SyncCreatedAfterOptions) {
     return this.db
       .selectFrom('album_user')
-      .select(['albumId as id', 'createId'])
-      .where('userId', '=', userId)
-      .$if(!!afterCreateId, (qb) => qb.where('createId', '>=', afterCreateId!))
-      .where('createId', '<', nowId)
-      .orderBy('createId', 'asc')
+      .innerJoin('album', 'album.id', 'album_user.albumId')
+      .select(['album_user.albumId as id', 'album_user.createId'])
+      .where('album_user.userId', '=', userId)
+      .$if(!!afterCreateId, (qb) => qb.where('album_user.createId', '>=', afterCreateId!))
+      .where('album_user.createId', '<', nowId)
+      .where('album.isLocked', '=', false)
+      .orderBy('album_user.createId', 'asc')
       .execute();
   }
 
@@ -177,6 +187,7 @@ class AlbumSync extends BaseSync {
       .distinctOn(['album.id', 'album.updateId'])
       .leftJoin('album_user as album_users', 'album.id', 'album_users.albumId')
       .where('album_users.userId', '=', userId)
+      .where('album.isLocked', '=', false)
       .select([
         'album.id',
         'album.albumName as name',
@@ -237,6 +248,8 @@ class AlbumAssetSync extends BaseSync {
       .where('album_asset.updateId', '<=', albumToAssetAck.updateId) // Ensure we only send updates for assets that the client already knows about
       .innerJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
       .where('album_user.userId', '=', userId)
+      .innerJoin('album', 'album.id', 'album_asset.albumId')
+      .where('album.isLocked', '=', false)
       .stream();
   }
 
@@ -258,6 +271,8 @@ class AlbumAssetSync extends BaseSync {
       )
       .innerJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
       .where('album_user.userId', '=', userId)
+      .innerJoin('album', 'album.id', 'album_asset.albumId')
+      .where('album.isLocked', '=', false)
       .stream();
   }
 }
@@ -283,6 +298,8 @@ class AlbumAssetExifSync extends BaseSync {
       .where('album_asset.updateId', '<=', albumToAssetAck.updateId) // Ensure we only send exif updates for assets that the client already knows about
       .innerJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
       .where('album_user.userId', '=', userId)
+      .innerJoin('album', 'album.id', 'album_asset.albumId')
+      .where('album.isLocked', '=', false)
       .stream();
   }
 
@@ -296,6 +313,7 @@ class AlbumAssetExifSync extends BaseSync {
       .innerJoin('album', 'album.id', 'album_asset.albumId')
       .leftJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
       .where('album_user.userId', '=', userId)
+      .where('album.isLocked', '=', false)
       .stream();
   }
 }
@@ -335,6 +353,8 @@ class AlbumToAssetSync extends BaseSync {
       .select(['album_asset.assetId as assetId', 'album_asset.albumId as albumId', 'album_asset.updateId'])
       .innerJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
       .where('album_user.userId', '=', userId)
+      .innerJoin('album', 'album.id', 'album_asset.albumId')
+      .where('album.isLocked', '=', false)
       .stream();
   }
 }
@@ -384,6 +404,8 @@ class AlbumUserSync extends BaseSync {
             .where('albumUsers.userId', '=', userId),
         ),
       )
+      .innerJoin('album', 'album.id', 'album_user.albumId')
+      .where('album.isLocked', '=', false)
       .stream();
   }
 }
