@@ -318,14 +318,11 @@ describe(SyncRequestType.AlbumToAssetsV1, () => {
 });
 
 describe('locked albums', () => {
-  it('should not sync the assets of a locked album', async () => {
+  it('should sync the assets of a locked album', async () => {
     const { auth, ctx } = await setup();
-    const { asset } = await ctx.newAsset({ ownerId: auth.user.id });
-    const { album } = await ctx.newAlbum({ ownerId: auth.user.id });
+    const { asset } = await ctx.newAsset({ ownerId: auth.user.id, visibility: AssetVisibility.Locked });
+    const { album } = await ctx.newAlbum({ ownerId: auth.user.id, isLocked: true });
     await ctx.newAlbumAsset({ albumId: album.id, assetId: asset.id });
-    const { asset: lockedAsset } = await ctx.newAsset({ ownerId: auth.user.id, visibility: AssetVisibility.Locked });
-    const { album: lockedAlbum } = await ctx.newAlbum({ ownerId: auth.user.id, isLocked: true });
-    await ctx.newAlbumAsset({ albumId: lockedAlbum.id, assetId: lockedAsset.id });
 
     const response = await ctx.syncStream(auth, [SyncRequestType.AlbumToAssetsV1]);
     expect(response).toEqual([

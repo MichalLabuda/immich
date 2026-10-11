@@ -2,18 +2,16 @@
 
 -- SyncRepository.album.getCreatedAfter
 select
-  "album_user"."albumId" as "id",
-  "album_user"."createId"
+  "albumId" as "id",
+  "createId"
 from
   "album_user"
-  inner join "album" on "album"."id" = "album_user"."albumId"
 where
-  "album_user"."userId" = $1
-  and "album_user"."createId" >= $2
-  and "album_user"."createId" < $3
-  and "album"."isLocked" = $4
+  "userId" = $1
+  and "createId" >= $2
+  and "createId" < $3
 order by
-  "album_user"."createId" asc
+  "createId" asc
 
 -- SyncRepository.album.getDeletes
 select
@@ -47,7 +45,6 @@ where
   "album"."updateId" < $1
   and "album"."updateId" > $2
   and "album_users"."userId" = $3
-  and "album"."isLocked" = $4
 order by
   "album"."updateId" asc
 
@@ -127,13 +124,11 @@ from
   "asset" as "asset"
   inner join "album_asset" on "album_asset"."assetId" = "asset"."id"
   inner join "album_user" on "album_user"."albumId" = "album_asset"."albumId"
-  inner join "album" on "album"."id" = "album_asset"."albumId"
 where
   "asset"."updateId" < $3
   and "asset"."updateId" > $4
   and "album_asset"."updateId" <= $5
   and "album_user"."userId" = $6
-  and "album"."isLocked" = $7
 order by
   "asset"."updateId" asc
 
@@ -167,12 +162,10 @@ from
   "album_asset" as "album_asset"
   inner join "asset" on "asset"."id" = "album_asset"."assetId"
   inner join "album_user" on "album_user"."albumId" = "album_asset"."albumId"
-  inner join "album" on "album"."id" = "album_asset"."albumId"
 where
   "album_asset"."updateId" < $3
   and "album_asset"."updateId" > $4
   and "album_user"."userId" = $5
-  and "album"."isLocked" = $6
 order by
   "album_asset"."updateId" asc
 
@@ -247,13 +240,11 @@ from
   "asset_exif" as "asset_exif"
   inner join "album_asset" on "album_asset"."assetId" = "asset_exif"."assetId"
   inner join "album_user" on "album_user"."albumId" = "album_asset"."albumId"
-  inner join "album" on "album"."id" = "album_asset"."albumId"
 where
   "asset_exif"."updateId" < $1
   and "asset_exif"."updateId" > $2
   and "album_asset"."updateId" <= $3
   and "album_user"."userId" = $4
-  and "album"."isLocked" = $5
 order by
   "asset_exif"."updateId" asc
 
@@ -294,7 +285,6 @@ where
   "album_asset"."updateId" < $1
   and "album_asset"."updateId" > $2
   and "album_user"."userId" = $3
-  and "album"."isLocked" = $4
 order by
   "album_asset"."updateId" asc
 
@@ -342,12 +332,10 @@ select
 from
   "album_asset" as "album_asset"
   inner join "album_user" on "album_user"."albumId" = "album_asset"."albumId"
-  inner join "album" on "album"."id" = "album_asset"."albumId"
 where
   "album_asset"."updateId" < $1
   and "album_asset"."updateId" > $2
   and "album_user"."userId" = $3
-  and "album"."isLocked" = $4
 order by
   "album_asset"."updateId" asc
 
@@ -396,7 +384,6 @@ select
   "album_user"."updateId"
 from
   "album_user" as "album_user"
-  inner join "album" on "album"."id" = "album_user"."albumId"
 where
   "album_user"."updateId" < $1
   and "album_user"."updateId" > $2
@@ -408,7 +395,6 @@ where
     where
       "albumUsers"."userId" = $3
   )
-  and "album"."isLocked" = $4
 order by
   "album_user"."updateId" asc
 

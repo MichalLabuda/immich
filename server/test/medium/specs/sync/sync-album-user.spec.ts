@@ -351,10 +351,9 @@ describe(SyncRequestType.AlbumUsersV1, () => {
 });
 
 describe('locked albums', () => {
-  it('should not sync the users of a locked album', async () => {
+  it('should sync the users of a locked album', async () => {
     const { auth, ctx } = await setup();
-    const { album } = await ctx.newAlbum({ ownerId: auth.user.id });
-    await ctx.newAlbum({ ownerId: auth.user.id, isLocked: true });
+    const { album } = await ctx.newAlbum({ ownerId: auth.user.id, isLocked: true });
 
     const response = await ctx.syncStream(auth, [SyncRequestType.AlbumUsersV1]);
     expect(response).toEqual([
