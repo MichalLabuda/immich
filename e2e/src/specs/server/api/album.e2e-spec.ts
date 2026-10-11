@@ -872,9 +872,17 @@ describe('/albums', () => {
       expect(albums.map(({ id }) => id)).not.toContain(lockedAlbumId);
       expect(albums.map(({ id }) => id)).not.toContain(sourceAlbum.id);
 
-      const { status } = await request(app)
+      const { status, body } = await request(app)
         .get(`/albums/${lockedAlbumId}`)
         .set('Authorization', `Bearer ${user5.accessToken}`);
+      expect(status).toBe(401);
+      expect(body).toEqual(expect.objectContaining({ message: 'Elevated permission is required' }));
+    });
+
+    it('should not tell a locked album of another user apart from a missing one', async () => {
+      const { status } = await request(app)
+        .get(`/albums/${lockedAlbumId}`)
+        .set('Authorization', `Bearer ${user1.accessToken}`);
       expect(status).toBe(400);
     });
 

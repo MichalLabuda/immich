@@ -85,7 +85,7 @@ export class AlbumService extends BaseService {
   }
 
   async get(auth: AuthDto, id: string): Promise<AlbumResponseDto> {
-    await this.requireAccess({ auth, permission: Permission.AlbumRead, ids: [id] });
+    await this.requireReadAccess(auth, id);
     await this.albumRepository.updateThumbnails();
     const album = await this.findOrFail(id, auth.user.id, { withAssets: false });
     // requireAccess(AlbumRead) above already denies access to a locked album unless the
@@ -580,6 +580,33 @@ export class AlbumService extends BaseService {
     }
 
     await this.albumUserRepository.update({ albumId: id, userId }, { role: dto.role });
+  }
+
+  /**
+   * Like requireAccess(AlbumRead), but tells a locked album apart from a missing one: an album the
+   * requester has access to but which is locked answers 401 ("elevated permission is required")
+   * to a non-elevated session, so a client can ask for the PIN and come back. Nothing else about
+   * the album is revealed, and an album the requester has no access to is still "not found".
+   */
+  private async requireReadAccess(auth: AuthDto, id: string) {
+    const allowed = await this.checkAccess({ auth, permission: Permission.AlbumRead, ids: [id] });
+    if (allowed.has(id)) {
+      return;
+    }
+
+    if (auth.session && !hasElevatedPermission(auth)) {
+      const elevated: AuthDto = { ...auth, session: { ...auth.session, hasElevatedPermission: true } };
+      const allowedWhenElevated = await this.checkAccess({
+        auth: elevated,
+        permission: Permission.AlbumRead,
+        ids: [id],
+      });
+      if (allowedWhenElevated.has(id)) {
+        requireElevatedPermission(auth);
+      }
+    }
+
+    throw new BadRequestException(`Not found or no ${Permission.AlbumRead} access`);
   }
 
   private findOrFail(id: string, authUserId: string, options: AlbumInfoOptions) {

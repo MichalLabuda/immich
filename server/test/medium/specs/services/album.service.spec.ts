@@ -45,7 +45,7 @@ describe(AlbumService.name, () => {
       await expect(sut.getAll(auth, { isOwned: true })).resolves.toEqual([expect.objectContaining({ id: album.id })]);
       await expect(sut.getAll(auth, { assetId: asset.id })).resolves.toEqual([]);
       await expect(sut.getStatistics(auth)).resolves.toEqual({ owned: 1, shared: 0, notShared: 1 });
-      await expect(sut.get(auth, lockedAlbum.id)).rejects.toThrow('Not found or no album.read access');
+      await expect(sut.get(auth, lockedAlbum.id)).rejects.toThrow(UnauthorizedException);
     });
 
     it('should list locked albums for an elevated session', async () => {

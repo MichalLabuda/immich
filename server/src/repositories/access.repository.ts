@@ -75,7 +75,7 @@ class AlbumAccess {
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
   @ChunkedSet({ paramIndex: 1 })
-  async checkOwnerAccess(userId: string, albumIds: Set<string>, hasElevatedPermission: boolean | undefined = true) {
+  async checkOwnerAccess(userId: string, albumIds: Set<string>, hasElevatedPermission: boolean | undefined) {
     if (albumIds.size === 0) {
       return new Set<string>();
     }
@@ -102,7 +102,7 @@ class AlbumAccess {
     userId: string,
     albumIds: Set<string>,
     access: AlbumUserRole,
-    hasElevatedPermission: boolean | undefined = true,
+    hasElevatedPermission: boolean | undefined,
   ) {
     if (albumIds.size === 0) {
       return new Set<string>();
@@ -152,7 +152,7 @@ class AssetAccess {
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID_SET] })
   @ChunkedSet({ paramIndex: 1 })
-  async checkAlbumAccess(userId: string, assetIds: Set<string>, hasElevatedPermission: boolean | undefined = true) {
+  async checkAlbumAccess(userId: string, assetIds: Set<string>, hasElevatedPermission: boolean | undefined) {
     if (assetIds.size === 0) {
       return new Set<string>();
     }

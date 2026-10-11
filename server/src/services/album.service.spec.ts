@@ -43,6 +43,32 @@ describe(AlbumService.name, () => {
     });
   });
 
+  describe('get', () => {
+    it('should answer 401 for a locked album of the requester when the session is not elevated', async () => {
+      const owner = UserFactory.create();
+      const auth = AuthFactory.from(owner).session({ hasElevatedPermission: false }).build();
+      const album = AlbumFactory.from({ isLocked: true }).owner(owner).build();
+      mocks.access.album.checkOwnerAccess.mockImplementation((_, ids, hasElevatedPermission) =>
+        Promise.resolve(hasElevatedPermission ? new Set(ids) : new Set()),
+      );
+      mocks.access.album.checkSharedAlbumAccess.mockResolvedValue(new Set());
+
+      await expect(sut.get(auth, album.id)).rejects.toBeInstanceOf(UnauthorizedException);
+
+      expect(mocks.access.album.checkOwnerAccess).toHaveBeenCalledWith(owner.id, new Set([album.id]), false);
+      expect(mocks.access.album.checkOwnerAccess).toHaveBeenCalledWith(owner.id, new Set([album.id]), true);
+      expect(mocks.album.getById).not.toHaveBeenCalled();
+    });
+
+    it('should not tell a locked album of another user apart from a missing one', async () => {
+      const auth = AuthFactory.from().session({ hasElevatedPermission: false }).build();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set());
+      mocks.access.album.checkSharedAlbumAccess.mockResolvedValue(new Set());
+
+      await expect(sut.get(auth, newUuid())).rejects.toThrow('Not found or no album.read access');
+    });
+  });
+
   describe('getAll', () => {
     it('should include locked albums in the list for an elevated session', async () => {
       const owner = UserFactory.create();
