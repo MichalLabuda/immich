@@ -305,6 +305,15 @@ set
 where
   "id" = any ($1::uuid[])
 
+-- AssetRepository.getLockedAssetIds
+select
+  "asset"."id"
+from
+  "asset"
+where
+  "asset"."id" = any ($1::uuid[])
+  and "asset"."visibility" = 'locked'
+
 -- AssetRepository.getByChecksum
 select
   "asset".*
