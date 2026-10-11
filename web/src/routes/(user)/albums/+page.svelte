@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { invalidateAll } from '$app/navigation';
   import { scrollMemory } from '$lib/actions/scroll-memory';
+  import OnEvents from '$lib/components/OnEvents.svelte';
   import AlbumsControls from './AlbumsControls.svelte';
   import Albums from '$lib/components/album-page/AlbumsList.svelte';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
@@ -21,6 +23,9 @@
   let searchQuery = $state('');
   let albumGroups: string[] = $state([]);
 </script>
+
+<!-- Locked albums are only listed for an elevated session: reload the lists when that changes. -->
+<OnEvents onAuthElevationChange={() => void invalidateAll()} />
 
 <UserPageLayout title={data.meta.title} use={[[scrollMemory, { routeStartsWith: Route.albums() }]]}>
   {#snippet buttons()}

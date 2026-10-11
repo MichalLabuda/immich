@@ -28,6 +28,8 @@ export type Events = {
   AuthLogin: [LoginResponseDto];
   AuthLogout: [];
   AuthUserLoaded: [UserAdminResponseDto];
+  /** The session gained (true) or lost (false) its PIN elevation. */
+  AuthElevationChange: [boolean];
 
   LanguageChange: [{ name: string; code: string; rtl?: boolean }];
 

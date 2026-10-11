@@ -54,7 +54,31 @@ class AuthManager {
   constructor() {
     eventManager.on({
       SessionDelete: () => goto(Route.logout()),
+      // Locking the session drops the elevation server-side; mirror it at once so locked albums
+      // disappear from every list and an open locked album page leaves, without waiting for the
+      // expiry timer.
+      SessionLocked: () => this.#setElevated(false),
     });
+  }
+
+  /**
+   * Single place where the elevation state changes. Interested parts of the app (album lists,
+   * the sidebar, an open album page) react to the `AuthElevationChange` event rather than to
+   * individual API calls, so whichever way the elevation is lost (lock, expiry, logout) the
+   * locked albums are purged everywhere.
+   */
+  #setElevated(isElevated: boolean) {
+    if (this.isElevated === isElevated) {
+      return;
+    }
+
+    this.isElevated = isElevated;
+    if (!isElevated) {
+      clearTimeout(this.#elevationExpiryTimer);
+      this.#elevationExpiryTimer = undefined;
+    }
+
+    eventManager.emit('AuthElevationChange', isElevated);
   }
 
   async load() {
@@ -72,7 +96,7 @@ class AuthManager {
   async refreshElevation() {
     try {
       const { isElevated, pinExpiresAt } = await getAuthStatus();
-      this.isElevated = isElevated;
+      this.#setElevated(isElevated);
       this.#scheduleElevationExpiry(isElevated ? pinExpiresAt : undefined);
     } catch {
       // noop
@@ -95,7 +119,7 @@ class AuthManager {
 
     const msUntilExpiry = new Date(pinExpiresAt).getTime() - Date.now();
     if (msUntilExpiry <= 0) {
-      this.isElevated = false;
+      this.#setElevated(false);
       return;
     }
 
@@ -112,7 +136,7 @@ class AuthManager {
           // and reschedules against it rather than flipping to "locked" prematurely.
           void this.refreshElevation();
         } else {
-          this.isElevated = false;
+          this.#setElevated(false);
         }
       },
       Math.min(delay, 2_147_483_647),
@@ -177,6 +201,8 @@ class AuthManager {
   reset() {
     this.#user = undefined;
     this.#preferences = undefined;
+    // Silently: everything that caches albums already resets on AuthLogout, and a navigation is
+    // underway.
     this.isElevated = false;
     clearTimeout(this.#elevationExpiryTimer);
     this.#elevationExpiryTimer = undefined;
