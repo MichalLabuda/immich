@@ -878,6 +878,8 @@ export type AlbumResponseDto = {
     id: string;
     /** Activity feed enabled */
     isActivityEnabled: boolean;
+    /** Album is locked and requires PIN elevation to view */
+    isLocked: boolean;
     /** Last modified asset timestamp */
     lastModifiedAssetTimestamp?: string;
     order?: AssetOrder;
@@ -902,6 +904,8 @@ export type CreateAlbumDto = {
     assetIds?: string[];
     /** Album description */
     description?: string | null;
+    /** Create the album already locked. Every asset in `assetIds` must already have Locked visibility (i.e. already be in the locked folder) -- an album can only ever be locked at creation time, and can only ever contain assets that are already locked. */
+    isLocked?: boolean;
 };
 export type AlbumsAddAssetsDto = {
     /** Album IDs */
@@ -912,6 +916,25 @@ export type AlbumsAddAssetsDto = {
 export type AlbumsAddAssetsResponseDto = {
     error?: BulkIdErrorReason;
     /** Operation success */
+    success: boolean;
+};
+export type BulkIdsDto = {
+    /** IDs to process */
+    ids: string[];
+};
+export type AlbumLockResponseDto = {
+    /** ID of the new album holding the moved assets */
+    albumId?: string;
+    /** Number of assets moved to the new album */
+    assetCount: number;
+    error?: BulkIdErrorReason;
+    /** Source album ID */
+    id: string;
+    /** Whether the emptied source album was removed */
+    removed: boolean;
+    /** Number of assets left in the source album because they are owned by other users */
+    skippedAssetCount: number;
+    /** Whether the album was moved */
     success: boolean;
 };
 export type AlbumStatisticsResponseDto = {
@@ -932,10 +955,6 @@ export type UpdateAlbumDto = {
     /** Enable activity feed */
     isActivityEnabled?: boolean;
     order?: AssetOrder;
-};
-export type BulkIdsDto = {
-    /** IDs to process */
-    ids: string[];
 };
 export type BulkIdResponseDto = {
     error?: BulkIdErrorReason;
@@ -3379,6 +3398,8 @@ export type SyncAlbumV2 = {
     id: string;
     /** Is activity enabled */
     isActivityEnabled: boolean;
+    /** Album is locked and requires PIN elevation to view */
+    isLocked: boolean;
     /** Album name */
     name: string;
     order: AssetOrder;
@@ -4419,6 +4440,21 @@ export function addAssetsToAlbums({ albumsAddAssetsDto }: {
     })));
 }
 /**
+ * Lock albums
+ */
+export function lockAlbums({ bulkIdsDto }: {
+    bulkIdsDto: BulkIdsDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 201;
+        data: AlbumLockResponseDto[];
+    }>("/albums/lock", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: bulkIdsDto
+    })));
+}
+/**
  * Retrieve album statistics
  */
 export function getAlbumStatistics(opts?: Oazapfts.RequestOpts) {
@@ -4428,6 +4464,21 @@ export function getAlbumStatistics(opts?: Oazapfts.RequestOpts) {
     }>("/albums/statistics", {
         ...opts
     }));
+}
+/**
+ * Unlock albums
+ */
+export function unlockAlbums({ bulkIdsDto }: {
+    bulkIdsDto: BulkIdsDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 201;
+        data: AlbumLockResponseDto[];
+    }>("/albums/unlock", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: bulkIdsDto
+    })));
 }
 /**
  * Delete an album
