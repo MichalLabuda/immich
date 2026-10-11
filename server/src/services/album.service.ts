@@ -115,8 +115,14 @@ export class AlbumService extends BaseService {
   async create(auth: AuthDto, dto: CreateAlbumDto): Promise<AlbumResponseDto> {
     const albumUsers = (dto.albumUsers || []).filter(({ userId }) => userId !== auth.user.id);
 
-    if (dto.isLocked && albumUsers.length > 0) {
-      throw new BadRequestException('A locked album cannot be shared');
+    if (dto.isLocked) {
+      // A locked album is invisible to a non-elevated session, so creating one without the PIN
+      // would produce an album the requester cannot see or use. Require elevation up front.
+      requireElevatedPermission(auth);
+
+      if (albumUsers.length > 0) {
+        throw new BadRequestException('A locked album cannot be shared');
+      }
     }
 
     for (const { userId } of albumUsers) {
@@ -127,22 +133,28 @@ export class AlbumService extends BaseService {
       }
     }
 
-    const allowedAssetIdsSet = await this.checkAccess({
-      auth,
-      permission: Permission.AssetShare,
-      ids: dto.assetIds || [],
-    });
-    const assetIds = [...allowedAssetIdsSet].map((id) => id);
+    let assetIds: string[];
+    if (dto.isLocked) {
+      // A locked album can only ever contain assets that are already locked (already sitting in
+      // the locked folder). Permission.AssetShare hardcodes non-elevated access, which would drop
+      // every locked asset before the check below could run -- so the album would silently end
+      // up empty. AssetUpdate respects elevation, and organizing an asset the requester already
+      // owns into a locked album they also own doesn't expose it to anyone else. Every requested
+      // asset must pass: nothing is dropped silently, the request is rejected instead.
+      assetIds = [...new Set(dto.assetIds || [])];
+      await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids: assetIds });
 
-    // A locked album can only ever be created already-locked, and can only ever contain assets
-    // that are already locked (i.e. already sitting in the locked folder) -- there's no "lock an
-    // existing album" conversion path anymore, so every asset given here must already have
-    // Locked visibility, or creation is rejected outright.
-    if (dto.isLocked && assetIds.length > 0) {
       const lockedAssetIds = await this.assetRepository.getLockedAssetIds(assetIds);
       if (lockedAssetIds.size !== assetIds.length) {
         throw new BadRequestException('A locked album can only contain assets that are already locked');
       }
+    } else {
+      const allowedAssetIdsSet = await this.checkAccess({
+        auth,
+        permission: Permission.AssetShare,
+        ids: dto.assetIds || [],
+      });
+      assetIds = [...allowedAssetIdsSet];
     }
 
     const userMetadata = await this.userRepository.getMetadata(auth.user.id);

@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { Kysely } from 'kysely';
 import { BulkIdErrorReason } from 'src/dtos/asset-ids.response.dto.js';
 import { AssetVisibility, JobName } from 'src/enum.js';
@@ -61,6 +61,66 @@ describe(AlbumService.name, () => {
       await expect(
         ctx.database.selectFrom('album_user').selectAll().where('albumId', '=', album.id).execute(),
       ).resolves.toEqual([]);
+    });
+  });
+
+  describe('create', () => {
+    it('should create a locked album with locked assets for an elevated session', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const { asset: asset1 } = await ctx.newAsset({ ownerId: user.id, visibility: AssetVisibility.Locked });
+      const { asset: asset2 } = await ctx.newAsset({ ownerId: user.id, visibility: AssetVisibility.Locked });
+      const auth = factory.auth({ user: { id: user.id }, session: { hasElevatedPermission: true } });
+
+      const album = await sut.create(auth, { albumName: 'Secret', isLocked: true, assetIds: [asset1.id, asset2.id] });
+
+      expect(album).toEqual(expect.objectContaining({ albumName: 'Secret', isLocked: true }));
+      await expect(ctx.get(AlbumRepository).getAllAssetIds(album.id)).resolves.toEqual(
+        expect.arrayContaining([asset1.id, asset2.id]),
+      );
+      await expect(sut.get(auth, album.id)).resolves.toEqual(expect.objectContaining({ assetCount: 2 }));
+    });
+
+    it('should reject a locked album with assets that are not locked', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const { asset: lockedAsset } = await ctx.newAsset({ ownerId: user.id, visibility: AssetVisibility.Locked });
+      const { asset: timelineAsset } = await ctx.newAsset({ ownerId: user.id });
+      const auth = factory.auth({ user: { id: user.id }, session: { hasElevatedPermission: true } });
+
+      await expect(
+        sut.create(auth, { albumName: 'Secret', isLocked: true, assetIds: [lockedAsset.id, timelineAsset.id] }),
+      ).rejects.toThrow(new BadRequestException('A locked album can only contain assets that are already locked'));
+
+      await expect(ctx.get(AlbumRepository).getAll(user.id, { withLocked: true })).resolves.toEqual([]);
+    });
+
+    it('should reject a locked album with assets of another user instead of dropping them', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const { user: otherUser } = await ctx.newUser();
+      const { asset: ownAsset } = await ctx.newAsset({ ownerId: user.id, visibility: AssetVisibility.Locked });
+      const { asset: otherAsset } = await ctx.newAsset({ ownerId: otherUser.id, visibility: AssetVisibility.Locked });
+      const auth = factory.auth({ user: { id: user.id }, session: { hasElevatedPermission: true } });
+
+      await expect(
+        sut.create(auth, { albumName: 'Secret', isLocked: true, assetIds: [ownAsset.id, otherAsset.id] }),
+      ).rejects.toThrow('Not found or no asset.update access');
+
+      await expect(ctx.get(AlbumRepository).getAll(user.id, { withLocked: true })).resolves.toEqual([]);
+    });
+
+    it('should reject a locked album for a non-elevated session', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const { asset } = await ctx.newAsset({ ownerId: user.id, visibility: AssetVisibility.Locked });
+      const auth = factory.auth({ user: { id: user.id }, session: { hasElevatedPermission: false } });
+
+      await expect(sut.create(auth, { albumName: 'Secret', isLocked: true, assetIds: [asset.id] })).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      await expect(ctx.get(AlbumRepository).getAll(user.id, { withLocked: true })).resolves.toEqual([]);
     });
   });
 
