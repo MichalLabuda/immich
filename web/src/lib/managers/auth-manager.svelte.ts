@@ -59,6 +59,16 @@ class AuthManager {
       // expiry timer.
       SessionLocked: () => this.#setElevated(false),
     });
+
+    // A tab that comes back into view re-syncs its elevation with the server: the session may
+    // have been locked from another tab or device while the websocket was not connected.
+    if (browser) {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && this.isElevated) {
+          void this.refreshElevation();
+        }
+      });
+    }
   }
 
   /**
