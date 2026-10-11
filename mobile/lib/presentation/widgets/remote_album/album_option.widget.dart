@@ -9,6 +9,7 @@ class RemoteAlbumOption extends StatelessWidget {
     this.onAddPhotos,
     this.onAddUsers,
     this.onDeleteAlbum,
+    this.onLockAlbum,
     this.onLeaveAlbum,
     this.onCreateSharedLink,
     this.onToggleAlbumOrder,
@@ -21,6 +22,7 @@ class RemoteAlbumOption extends StatelessWidget {
   final VoidCallback? onAddPhotos;
   final VoidCallback? onAddUsers;
   final VoidCallback? onDeleteAlbum;
+  final VoidCallback? onLockAlbum;
   final VoidCallback? onLeaveAlbum;
   final VoidCallback? onCreateSharedLink;
   final VoidCallback? onToggleAlbumOrder;
@@ -98,6 +100,17 @@ class RemoteAlbumOption extends StatelessWidget {
     if (onShowOptions != null) {
       menuChildren.add(
         BaseActionButton(label: context.t.options, iconData: Icons.settings, onPressed: onShowOptions, menuItem: true),
+      );
+    }
+
+    if (onLockAlbum != null) {
+      menuChildren.add(
+        BaseActionButton(
+          label: context.t.move_album_to_locked_folder,
+          iconData: Icons.lock_rounded,
+          onPressed: onLockAlbum,
+          menuItem: true,
+        ),
       );
     }
 

@@ -107,6 +107,19 @@ class AlbumApiRepository extends ApiRepository {
     return _api.deleteAlbum(albumId);
   }
 
+  /// Moves the user's assets of the album to the locked folder. The server replaces the album
+  /// with a new locked album, which is never synced to the app; the assets show up in the locked
+  /// folder instead.
+  Future<AlbumLockResult> lockAlbum(String albumId) async {
+    final response = await checkNull(_api.lockAlbums(BulkIdsDto(ids: [albumId])));
+    final result = response.where((item) => item.id == albumId).firstOrNull;
+    if (result == null || !result.success) {
+      throw Exception('Failed to lock album $albumId: ${result?.error.orElse(null) ?? 'no result'}');
+    }
+
+    return (assetCount: result.assetCount, skippedAssetCount: result.skippedAssetCount, removed: result.removed);
+  }
+
   Future<void> addUsers(String albumId, Iterable<String> userIds) async {
     final albumUsers = userIds.map((userId) => AlbumUserAddDto(userId: userId)).toList();
     await checkNull(_api.addUsersToAlbum(albumId, AddUsersDto(albumUsers: albumUsers)));

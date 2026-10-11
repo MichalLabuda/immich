@@ -20,6 +20,7 @@ import 'package:immich_mobile/providers/infrastructure/timeline.provider.dart';
 import 'package:immich_mobile/providers/server_info.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
 import 'package:immich_mobile/routing/router.dart';
+import 'package:immich_mobile/widgets/common/confirm_dialog.dart';
 import 'package:immich_mobile/widgets/common/immich_toast.dart';
 import 'package:immich_mobile/widgets/common/remote_album_sliver_app_bar.dart';
 
@@ -162,6 +163,49 @@ class _RemoteAlbumPageState extends ConsumerState<RemoteAlbumPage> {
     }
   }
 
+  /// Moves the album to the locked folder. Like locking a single asset this asks for no PIN: the
+  /// assets land in the locked folder, which asks for the PIN (or to set one up) when opened. The
+  /// new locked album is not synced to the app.
+  Future<void> lockAlbum(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => ConfirmDialog(
+        title: context.t.move_album_to_locked_folder,
+        content: context.t.move_album_to_locked_folder_confirmation(album: _album.name),
+        ok: context.t.move,
+      ),
+    );
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    try {
+      final result = await ref.read(remoteAlbumProvider.notifier).lockAlbum(_album.id);
+      if (!context.mounted) {
+        return;
+      }
+
+      final moved = context.t.album_moved_to_locked_folder(count: result.assetCount);
+      final skipped = result.skippedAssetCount > 0
+          ? ' ${context.t.album_assets_left_behind_count(count: result.skippedAssetCount)}'
+          : '';
+      ImmichToast.show(context: context, msg: '$moved$skipped', toastType: ToastType.success);
+
+      if (result.removed) {
+        unawaited(context.pushRoute(const AlbumsRoute()));
+      } else {
+        // Assets of other users stayed behind; the album is still there without the user's own.
+        ref.invalidate(timelineServiceProvider);
+      }
+    } catch (e) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ImmichToast.show(context: context, msg: context.t.errors.unable_to_move_album, toastType: ToastType.error);
+    }
+  }
+
   Future<void> showEditTitleAndDescription(BuildContext context) async {
     final result = await showDialog<_EditAlbumData?>(
       context: context,
@@ -217,6 +261,7 @@ class _RemoteAlbumPageState extends ConsumerState<RemoteAlbumPage> {
               kebabMenu: _AlbumKebabMenu(
                 album: _album,
                 onDeleteAlbum: () => deleteAlbum(context),
+                onLockAlbum: () => lockAlbum(context),
                 onAddUsers: () => addUsers(context),
                 onAddPhotos: isOwner || isEditor ? () => addAssets(context) : null,
                 onToggleAlbumOrder: () => toggleAlbumOrder(),
@@ -388,6 +433,7 @@ class _EditAlbumDialogState extends ConsumerState<_EditAlbumDialog> {
 class _AlbumKebabMenu extends ConsumerWidget {
   final RemoteAlbum album;
   final VoidCallback? onDeleteAlbum;
+  final VoidCallback? onLockAlbum;
   final VoidCallback? onAddUsers;
   final VoidCallback? onAddPhotos;
   final VoidCallback? onToggleAlbumOrder;
@@ -398,6 +444,7 @@ class _AlbumKebabMenu extends ConsumerWidget {
   const _AlbumKebabMenu({
     required this.album,
     this.onDeleteAlbum,
+    this.onLockAlbum,
     this.onAddUsers,
     this.onAddPhotos,
     this.onToggleAlbumOrder,
@@ -439,6 +486,7 @@ class _AlbumKebabMenu extends ConsumerWidget {
       iconColor: iconColor,
       iconShadows: iconShadows,
       onDeleteAlbum: isOwner ? onDeleteAlbum : null,
+      onLockAlbum: isOwner ? onLockAlbum : null,
       onAddUsers: isOwner ? onAddUsers : null,
       onAddPhotos: onAddPhotos,
       onToggleAlbumOrder: isOwner ? onToggleAlbumOrder : null,

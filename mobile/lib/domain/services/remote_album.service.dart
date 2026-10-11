@@ -290,6 +290,17 @@ class RemoteAlbumService {
     await _repository.deleteAlbum(albumId);
   }
 
+  /// Moves the user's assets of the album to the locked folder. Like locking a single asset this
+  /// needs no PIN: the locked folder itself asks for one (or to set one up) when it is opened.
+  Future<AlbumLockResult> lockAlbum(String albumId) async {
+    final result = await _albumApiRepository.lockAlbum(albumId);
+    if (result.removed) {
+      await _repository.deleteAlbum(albumId);
+    }
+
+    return result;
+  }
+
   Future<void> addUsers({required String albumId, required List<String> userIds}) async {
     await _albumApiRepository.addUsers(albumId, userIds);
 

@@ -79,4 +79,44 @@ void main() {
     expect(result.added, ['ok']);
     expect(result.failed, ['perm']);
   });
+
+  group('lockAlbum', () {
+    test('returns the counts of the album', () async {
+      when(() => api.lockAlbums(any())).thenAnswer(
+        (_) async => [
+          AlbumLockResponseDto(
+            id: 'album-1',
+            success: true,
+            albumId: const Optional.present('album-2'),
+            assetCount: 3,
+            skippedAssetCount: 1,
+            removed: true,
+          ),
+        ],
+      );
+
+      final result = await repo.lockAlbum('album-1');
+
+      expect(result, (assetCount: 3, skippedAssetCount: 1, removed: true));
+      final captured = verify(() => api.lockAlbums(captureAny())).captured.single as BulkIdsDto;
+      expect(captured.ids, ['album-1']);
+    });
+
+    test('throws when the album was not moved', () async {
+      when(() => api.lockAlbums(any())).thenAnswer(
+        (_) async => [
+          AlbumLockResponseDto(
+            id: 'album-1',
+            success: false,
+            error: const Optional.present(BulkIdErrorReason.noPermission),
+            assetCount: 0,
+            skippedAssetCount: 0,
+            removed: false,
+          ),
+        ],
+      );
+
+      await expectLater(repo.lockAlbum('album-1'), throwsException);
+    });
+  });
 }
