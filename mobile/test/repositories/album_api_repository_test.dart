@@ -119,4 +119,26 @@ void main() {
       await expectLater(repo.lockAlbum('album-1'), throwsException);
     });
   });
+
+  group('unlockAlbum', () {
+    test('returns the counts of the album', () async {
+      when(() => api.unlockAlbums(any())).thenAnswer(
+        (_) async => [
+          AlbumLockResponseDto(
+            id: 'album-1',
+            success: true,
+            albumId: const Optional.present('album-2'),
+            assetCount: 2,
+            skippedAssetCount: 0,
+            removed: true,
+          ),
+        ],
+      );
+
+      final result = await repo.unlockAlbum('album-1');
+
+      expect(result, (assetCount: 2, skippedAssetCount: 0, removed: true));
+      verifyNever(() => api.lockAlbums(any()));
+    });
+  });
 }

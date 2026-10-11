@@ -24,6 +24,10 @@ class RemoteAlbumEntity extends Table with DriftDefaultsMixin {
 
   IntColumn get order => intEnum<AlbumAssetOrder>()();
 
+  /// A locked album is a container of locked assets. Like them it is synced and stored, but only
+  /// ever shown inside the locked folder, never in an album list or picker.
+  BoolColumn get isLocked => boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

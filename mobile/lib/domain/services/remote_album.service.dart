@@ -301,6 +301,23 @@ class RemoteAlbumService {
     return result;
   }
 
+  /// The locked albums, for the locked folder only. They are synced like locked assets and kept
+  /// out of every other list by the repository.
+  Future<List<RemoteAlbum>> getLocked() {
+    return _repository.getAll(locked: true);
+  }
+
+  /// Moves the user's assets of a locked album back to the library. Needs an elevated session,
+  /// which the locked folder guard provides.
+  Future<AlbumLockResult> unlockAlbum(String albumId) async {
+    final result = await _albumApiRepository.unlockAlbum(albumId);
+    if (result.removed) {
+      await _repository.deleteAlbum(albumId);
+    }
+
+    return result;
+  }
+
   Future<void> addUsers({required String albumId, required List<String> userIds}) async {
     await _albumApiRepository.addUsers(albumId, userIds);
 

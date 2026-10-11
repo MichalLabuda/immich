@@ -108,13 +108,20 @@ class AlbumApiRepository extends ApiRepository {
   }
 
   /// Moves the user's assets of the album to the locked folder. The server replaces the album
-  /// with a new locked album, which is never synced to the app; the assets show up in the locked
-  /// folder instead.
-  Future<AlbumLockResult> lockAlbum(String albumId) async {
-    final response = await checkNull(_api.lockAlbums(BulkIdsDto(ids: [albumId])));
+  /// with a new locked album, which is synced like the locked assets themselves.
+  Future<AlbumLockResult> lockAlbum(String albumId) => _setLocked(albumId, isLocked: true);
+
+  /// Moves the user's assets of a locked album back to the library, into a new unlocked album.
+  Future<AlbumLockResult> unlockAlbum(String albumId) => _setLocked(albumId, isLocked: false);
+
+  Future<AlbumLockResult> _setLocked(String albumId, {required bool isLocked}) async {
+    final dto = BulkIdsDto(ids: [albumId]);
+    final response = await checkNull(isLocked ? _api.lockAlbums(dto) : _api.unlockAlbums(dto));
     final result = response.where((item) => item.id == albumId).firstOrNull;
     if (result == null || !result.success) {
-      throw Exception('Failed to lock album $albumId: ${result?.error.orElse(null) ?? 'no result'}');
+      throw Exception(
+        'Failed to ${isLocked ? 'lock' : 'unlock'} album $albumId: ${result?.error.orElse(null) ?? 'no result'}',
+      );
     }
 
     return (assetCount: result.assetCount, skippedAssetCount: result.skippedAssetCount, removed: result.removed);

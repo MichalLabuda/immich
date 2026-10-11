@@ -191,10 +191,54 @@ class _RemoteAlbumPageState extends ConsumerState<RemoteAlbumPage> {
           : '';
       ImmichToast.show(context: context, msg: '$moved$skipped', toastType: ToastType.success);
 
+      ref.invalidate(lockedAlbumsProvider);
       if (result.removed) {
         unawaited(context.pushRoute(const AlbumsRoute()));
       } else {
         // Assets of other users stayed behind; the album is still there without the user's own.
+        ref.invalidate(timelineServiceProvider);
+      }
+    } catch (e) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ImmichToast.show(context: context, msg: context.t.errors.unable_to_move_album, toastType: ToastType.error);
+    }
+  }
+
+  /// Moves a locked album back to the library. Only reachable from inside the locked folder,
+  /// whose guard has elevated the session, which the server requires for unlocking.
+  Future<void> unlockAlbum(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => ConfirmDialog(
+        title: context.t.move_album_out_of_locked_folder,
+        content: context.t.move_album_out_of_locked_folder_confirmation(album: _album.name),
+        ok: context.t.move,
+      ),
+    );
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    try {
+      final result = await ref.read(remoteAlbumProvider.notifier).unlockAlbum(_album.id);
+      if (!context.mounted) {
+        return;
+      }
+
+      ImmichToast.show(
+        context: context,
+        msg: context.t.album_moved_out_of_locked_folder(count: result.assetCount),
+        toastType: ToastType.success,
+      );
+
+      ref.invalidate(lockedAlbumsProvider);
+      if (result.removed) {
+        // The new unlocked album arrives with the next sync; go back to the locked folder.
+        unawaited(context.maybePop());
+      } else {
         ref.invalidate(timelineServiceProvider);
       }
     } catch (e) {
@@ -261,12 +305,17 @@ class _RemoteAlbumPageState extends ConsumerState<RemoteAlbumPage> {
               kebabMenu: _AlbumKebabMenu(
                 album: _album,
                 onDeleteAlbum: () => deleteAlbum(context),
-                onLockAlbum: () => lockAlbum(context),
-                onAddUsers: () => addUsers(context),
-                onAddPhotos: isOwner || isEditor ? () => addAssets(context) : null,
+                onLockAlbum: _album.isLocked ? null : () => lockAlbum(context),
+                onUnlockAlbum: _album.isLocked ? () => unlockAlbum(context) : null,
+                // A locked album cannot be shared, and only already-locked assets can be added to
+                // it, which the picker does not offer; assets are locked from the locked folder.
+                onAddUsers: _album.isLocked ? null : () => addUsers(context),
+                onAddPhotos: !_album.isLocked && (isOwner || isEditor) ? () => addAssets(context) : null,
                 onToggleAlbumOrder: () => toggleAlbumOrder(),
                 onEditAlbum: canEdit ? () => showEditTitleAndDescription(context) : null,
-                onCreateSharedLink: () => unawaited(context.pushRoute(SharedLinkEditRoute(albumId: _album.id))),
+                onCreateSharedLink: _album.isLocked
+                    ? null
+                    : () => unawaited(context.pushRoute(SharedLinkEditRoute(albumId: _album.id))),
                 onShowOptions: () => context.pushRoute(AlbumOptionsRoute(album: _album)),
               ),
               onEditTitle: canEdit ? () => showEditTitleAndDescription(context) : null,
@@ -434,6 +483,7 @@ class _AlbumKebabMenu extends ConsumerWidget {
   final RemoteAlbum album;
   final VoidCallback? onDeleteAlbum;
   final VoidCallback? onLockAlbum;
+  final VoidCallback? onUnlockAlbum;
   final VoidCallback? onAddUsers;
   final VoidCallback? onAddPhotos;
   final VoidCallback? onToggleAlbumOrder;
@@ -445,6 +495,7 @@ class _AlbumKebabMenu extends ConsumerWidget {
     required this.album,
     this.onDeleteAlbum,
     this.onLockAlbum,
+    this.onUnlockAlbum,
     this.onAddUsers,
     this.onAddPhotos,
     this.onToggleAlbumOrder,
@@ -487,6 +538,7 @@ class _AlbumKebabMenu extends ConsumerWidget {
       iconShadows: iconShadows,
       onDeleteAlbum: isOwner ? onDeleteAlbum : null,
       onLockAlbum: isOwner ? onLockAlbum : null,
+      onUnlockAlbum: isOwner ? onUnlockAlbum : null,
       onAddUsers: isOwner ? onAddUsers : null,
       onAddPhotos: onAddPhotos,
       onToggleAlbumOrder: isOwner ? onToggleAlbumOrder : null,

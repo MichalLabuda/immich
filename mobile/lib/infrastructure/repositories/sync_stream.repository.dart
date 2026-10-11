@@ -512,6 +512,8 @@ class SyncStreamRepository extends DatabaseAccessor<Drift> with $SyncStreamRepos
               name: Value(album.name),
               description: Value(album.description),
               isActivityEnabled: Value(album.isActivityEnabled),
+              // The V1 album does not carry the lock state; albums only ever come locked via V2.
+              isLocked: const Value(false),
               order: Value(album.order.toAlbumAssetOrder()),
               thumbnailAssetId: Value(album.thumbnailAssetId),
               createdAt: Value(album.createdAt),
@@ -552,6 +554,7 @@ class SyncStreamRepository extends DatabaseAccessor<Drift> with $SyncStreamRepos
             name: Value(album.name),
             description: Value(album.description),
             isActivityEnabled: Value(album.isActivityEnabled),
+            isLocked: Value(album.isLocked),
             order: Value(album.order.toAlbumAssetOrder()),
             thumbnailAssetId: Value(album.thumbnailAssetId),
             createdAt: Value(album.createdAt),

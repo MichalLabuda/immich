@@ -23,7 +23,13 @@ class RemoteAlbumRepository extends DatabaseAccessor<Drift> with $RemoteAlbumRep
 
   Drift get _db => attachedDatabase;
 
-  Future<List<RemoteAlbum>> getAll({Set<SortRemoteAlbumsBy> sortBy = const {SortRemoteAlbumsBy.updatedAt}}) {
+  /// Lists the albums of one kind: the ordinary ones by default, or only the locked ones with
+  /// [locked]. Locked albums never mix into an ordinary list, so every album list and picker stays
+  /// free of them without each caller having to filter; the locked folder asks for them explicitly.
+  Future<List<RemoteAlbum>> getAll({
+    Set<SortRemoteAlbumsBy> sortBy = const {SortRemoteAlbumsBy.updatedAt},
+    bool locked = false,
+  }) {
     // Count non-trashed assets via the joined asset table. Filtering trashed assets in the
     // join condition (instead of the where clause) keeps albums whose assets are all trashed
     // in the result, the same way truly empty albums are kept
@@ -55,6 +61,7 @@ class RemoteAlbumRepository extends DatabaseAccessor<Drift> with $RemoteAlbumRep
       ),
     ]);
     query
+      ..where(_db.remoteAlbumEntity.isLocked.equals(locked))
       ..addColumns([assetCount])
       ..addColumns([_db.userEntity.name, _db.userEntity.id])
       ..addColumns([_db.remoteAlbumUserEntity.userId.count(distinct: true)])
@@ -147,7 +154,8 @@ class RemoteAlbumRepository extends DatabaseAccessor<Drift> with $RemoteAlbumRep
 
     query
       ..addColumns([_db.remoteAlbumUserEntity.userId])
-      ..where(_db.remoteAlbumEntity.name.equals(albumName))
+      // A locked album is never a link target for a device album: its assets must already be locked.
+      ..where(_db.remoteAlbumEntity.name.equals(albumName) & _db.remoteAlbumEntity.isLocked.equals(false))
       ..orderBy([OrderingTerm.desc(_db.remoteAlbumEntity.createdAt)])
       ..limit(1);
 
@@ -170,6 +178,7 @@ class RemoteAlbumRepository extends DatabaseAccessor<Drift> with $RemoteAlbumRep
         description: Value(album.description),
         thumbnailAssetId: Value(album.thumbnailAssetId ?? (assetIds.isNotEmpty ? assetIds.first : null)),
         isActivityEnabled: Value(album.isActivityEnabled),
+        isLocked: Value(album.isLocked),
         order: Value(album.order),
       );
 
@@ -205,6 +214,7 @@ class RemoteAlbumRepository extends DatabaseAccessor<Drift> with $RemoteAlbumRep
         description: Value(album.description),
         thumbnailAssetId: Value(album.thumbnailAssetId),
         isActivityEnabled: Value(album.isActivityEnabled),
+        isLocked: Value(album.isLocked),
         order: Value(album.order),
       ),
     );
@@ -583,6 +593,7 @@ extension on RemoteAlbumEntityData {
       description: description,
       thumbnailAssetId: thumbnailAssetId,
       isActivityEnabled: isActivityEnabled,
+      isLocked: isLocked,
       order: order,
       assetCount: assetCount,
       ownerName: ownerName,
