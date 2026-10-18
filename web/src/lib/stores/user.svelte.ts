@@ -33,6 +33,8 @@ const reset = () => {
 // eslint-disable-next-line unicorn/no-top-level-side-effects
 eventManager.on({
   AlbumCreate: () => resetRecentAlbums(),
+  // Locked albums are only listed for an elevated session: refetch when that changes.
+  AuthElevationChange: () => resetRecentAlbums(),
   AlbumUpdate: () => resetRecentAlbums(),
   AlbumDelete: () => resetRecentAlbums(),
   AuthLogout: () => reset(),

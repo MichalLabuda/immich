@@ -3,7 +3,7 @@
   import AuthPageLayout from '$lib/components/layouts/AuthPageLayout.svelte';
   import PinCodeCreateForm from '$lib/components/user-settings-page/PinCodeCreateForm.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
-  import { Route } from '$lib/route';
+  import { getPinPromptCancelRoute } from '$lib/utils/album-lock';
   import { handleError } from '$lib/utils/handle-error';
   import { unlockAuthSession } from '@immich/sdk';
   import { Button, Icon, PinInput } from '@immich/ui';
@@ -22,6 +22,11 @@
   let isBadPinCode = $state(false);
   let hasPinCode = $derived(data.hasPinCode);
   let pinCode = $state('');
+
+  // Cancelling must never land on the page that asked for the PIN (it cannot be shown without
+  // it). The prompt's own history entry is replaced so that "back" from the next page does not
+  // return to the prompt either.
+  const handleCancel = () => goto(getPinPromptCancelRoute(data.continueUrl), { replaceState: true });
 
   const handleUnlockSession = async (code: string) => {
     try {
@@ -68,7 +73,7 @@
       {/if}
 
       <div class={hasPinCode ? '' : 'flex w-full items-start'}>
-        <Button type="button" color="secondary" onclick={() => goto(Route.photos())}>{$t('cancel')}</Button>
+        <Button type="button" color="secondary" onclick={handleCancel}>{$t('cancel')}</Button>
       </div>
     </div>
   </div>

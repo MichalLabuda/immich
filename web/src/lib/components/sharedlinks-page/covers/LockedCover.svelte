@@ -5,12 +5,9 @@
 
   interface Props {
     alt?: string;
-    preload?: boolean;
     class?: string;
   }
 
-  // `preload` is accepted for prop-shape parity with AssetCover/NoCover but unused here --
-  // there's no image element for this static placeholder to eagerly load.
   let { alt = '', class: className }: Props = $props();
 </script>
 

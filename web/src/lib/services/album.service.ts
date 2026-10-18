@@ -5,7 +5,9 @@ import {
   AlbumUserRole,
   BulkIdErrorReason,
   deleteAlbum,
+  lockAlbums,
   removeUserFromAlbum,
+  unlockAlbums,
   updateAlbumInfo,
   updateAlbumUser,
   type AlbumResponseDto,
@@ -20,6 +22,8 @@ import {
   mdiDownload,
   mdiImageOutline,
   mdiLink,
+  mdiLockOpenVariantOutline,
+  mdiLockOutline,
   mdiPlus,
   mdiPlusBoxOutline,
   mdiRenameOutline,
@@ -66,11 +70,13 @@ export const getAlbumActions = ($t: MessageFormatter, album: AlbumResponseDto) =
   const isOwned = isAlbumOwner(album);
   const isEditor = isAlbumEditor(album);
 
+  // A locked album cannot be shared, so the sharing actions are not offered for one.
 
   const AddUsers: ActionItem = {
     title: $t('add_user'),
     icon: mdiPlus,
     color: 'primary',
+    $if: () => !album.isLocked,
     onAction: () =>
       modalManager.show(AddUsersModal, {
         excludedUserIds: album.albumUsers.map(({ user: { id } }) => id),
@@ -83,12 +89,8 @@ export const getAlbumActions = ($t: MessageFormatter, album: AlbumResponseDto) =
     title: $t('create_link'),
     icon: mdiLink,
     color: 'primary',
-    onAction: async () => {
-      if (await redirectIfLockedAndNotElevated(album)) {
-        return;
-      }
-      modalManager.show(SharedLinkCreateModal, { albumId: album.id });
-    },
+    $if: () => !album.isLocked,
+    onAction: () => modalManager.show(SharedLinkCreateModal, { albumId: album.id }),
   };
 
   const Delete: ActionItem = {
@@ -241,8 +243,6 @@ const notifyAddToAlbums = (
 ) => {
   if (results.error === BulkIdErrorReason.Duplicate) {
     toastManager.info($t('assets_were_part_of_albums_count', { values: { count: assetIds.length } }));
-  } else if (results.error === BulkIdErrorReason.AlreadyInLockedAlbum) {
-    toastManager.warning($t('assets_already_in_another_locked_album_count', { values: { count: assetIds.length } }));
   } else if (results.error) {
     toastManager.warning($t('assets_cannot_be_added_to_albums', { values: { count: assetIds.length } }));
   } else {
@@ -420,6 +420,68 @@ export const handleDeleteAlbum = async (album: AlbumResponseDto, options?: { pro
   } catch (error) {
     handleError(error, $t('errors.unable_to_delete_album'), { notify });
     return false;
+  }
+};
+
+/**
+ * Move the album's assets to the locked folder (`isLocked`) or out of it. The server replaces the
+ * album with a new one of the other kind, so on success the caller gets the result with the new
+ * album's id and whether the source album was removed.
+ */
+export const handleSetAlbumLocked = async (album: AlbumResponseDto, isLocked: boolean) => {
+  const $t = await getFormatter();
+
+  if (!isLocked && (await redirectIfLockedAndNotElevated(album))) {
+    return;
+  }
+
+  const confirmed = await modalManager.showDialog({
+    title: isLocked ? $t('move_album_to_locked_folder') : $t('move_album_out_of_locked_folder'),
+    prompt: isLocked
+      ? $t('move_album_to_locked_folder_confirmation', { values: { album: album.albumName } })
+      : $t('move_album_out_of_locked_folder_confirmation', { values: { album: album.albumName } }),
+    confirmText: $t('move'),
+    confirmColor: isLocked ? 'primary' : 'danger',
+    icon: isLocked ? mdiLockOutline : mdiLockOpenVariantOutline,
+  });
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const [result] = isLocked
+      ? await lockAlbums({ bulkIdsDto: { ids: [album.id] } })
+      : await unlockAlbums({ bulkIdsDto: { ids: [album.id] } });
+    const { albumId } = result;
+
+    if (!result.success || !albumId) {
+      toastManager.warning($t('errors.unable_to_move_album'));
+      return;
+    }
+
+    if (result.removed) {
+      eventManager.emit('AlbumDelete', album);
+    }
+
+    const moved = isLocked
+      ? $t('album_moved_to_locked_folder', { values: { count: result.assetCount } })
+      : $t('album_moved_out_of_locked_folder', { values: { count: result.assetCount } });
+    const skipped =
+      result.skippedAssetCount > 0
+        ? ` ${$t('album_assets_left_behind_count', { values: { count: result.skippedAssetCount } })}`
+        : '';
+    toastManager.primary({
+      description: `${moved}${skipped}`,
+      button: { label: $t('view_album'), onclick: () => goto(Route.viewAlbum({ id: albumId })) },
+    });
+
+    // The new album is not in any loaded page data yet.
+    await invalidateAll();
+
+    return result;
+  } catch (error) {
+    handleError(error, $t('errors.unable_to_move_album'));
   }
 };
 

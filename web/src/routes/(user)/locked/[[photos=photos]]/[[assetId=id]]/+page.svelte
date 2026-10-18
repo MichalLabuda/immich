@@ -1,10 +1,10 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import ActionMenuItem from '$lib/components/ActionMenuItem.svelte';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import OnEvents from '$lib/components/OnEvents.svelte';
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/ButtonContextMenu.svelte';
   import EmptyPlaceholder from '$lib/components/shared-components/EmptyPlaceholder.svelte';
-  import MenuOption from '$lib/components/shared-components/context-menu/MenuOption.svelte';
   import ChangeDate from '$lib/components/timeline/actions/ChangeDateAction.svelte';
   import ChangeLocation from '$lib/components/timeline/actions/ChangeLocationAction.svelte';
   import DeleteAssets from '$lib/components/timeline/actions/DeleteAssetsAction.svelte';
@@ -87,7 +87,7 @@
     <SelectAllAssets withText {timelineManager} assetInteraction={assetMultiSelectManager} />
     <SetVisibilityAction unlock onVisibilitySet={handleMoveOffLockedFolder} />
     <ButtonContextMenu icon={mdiDotsVertical} title={$t('menu')}>
-      <MenuOption icon={AddToAlbum.icon} text={AddToAlbum.title} onClick={AddToAlbum.onAction} />
+      <ActionMenuItem action={AddToAlbum} />
       <DownloadAction menuItem />
       <ChangeDate menuItem />
       <ChangeLocation menuItem />
