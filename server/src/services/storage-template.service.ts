@@ -315,7 +315,7 @@ export class StorageTemplateService extends BaseService {
       if (this.template.needsAlbum) {
         // For motion videos, use the still photo's album information since motion videos
         // don't have album metadata attached directly
-        const albums = await this.albumRepository.getByAssetId(assetForMetadata.ownerId, assetForMetadata.id);
+        const albums = await this.albumRepository.getByAssetId(assetForMetadata.ownerId, assetForMetadata.id, true);
         const album = albums?.[0];
         if (album) {
           albumName = album.albumName || null;

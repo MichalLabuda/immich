@@ -205,7 +205,7 @@ describe(StorageTemplateService.name, () => {
       await expect(sut.handleMigrationSingle({ id: stillAsset.id })).resolves.toBe(JobStatus.Success);
 
       expect(mocks.storage.checkFileExists).toHaveBeenCalledTimes(2);
-      expect(mocks.album.getByAssetId).toHaveBeenCalledWith(stillAsset.ownerId, stillAsset.id);
+      expect(mocks.album.getByAssetId).toHaveBeenCalledWith(stillAsset.ownerId, stillAsset.id, true);
       expect(mocks.asset.update).toHaveBeenCalledWith({ id: stillAsset.id, originalPath: newStillPicturePath });
       expect(mocks.asset.update).toHaveBeenCalledWith({ id: motionAsset.id, originalPath: newMotionPicturePath });
     });
@@ -895,7 +895,7 @@ describe(StorageTemplateService.name, () => {
 
       await sut.handleMigration();
 
-      expect(mocks.album.getByAssetId).toHaveBeenCalledWith(stillAsset.ownerId, stillAsset.id);
+      expect(mocks.album.getByAssetId).toHaveBeenCalledWith(stillAsset.ownerId, stillAsset.id, true);
       expect(mocks.album.getByAssetId).toHaveBeenCalledTimes(2);
       expect(mocks.asset.update).toHaveBeenCalledWith({
         id: stillAsset.id,

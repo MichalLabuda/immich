@@ -35,4 +35,24 @@ describe(AlbumController.name, () => {
       expect(body).toEqual(factory.responses.validationError([{ path: ['assetId'], message: 'Invalid UUID' }]));
     });
   });
+
+  describe('POST /albums/lock', () => {
+    it('should reject an invalid id', async () => {
+      const { status, body } = await request(ctx.getHttpServer())
+        .post('/albums/lock')
+        .send({ ids: ['invalid'] });
+      expect(status).toEqual(400);
+      expect(body).toEqual(factory.responses.validationError([{ path: ['ids', 0], message: 'Invalid UUID' }]));
+    });
+  });
+
+  describe('POST /albums/unlock', () => {
+    it('should reject an invalid id', async () => {
+      const { status, body } = await request(ctx.getHttpServer())
+        .post('/albums/unlock')
+        .send({ ids: ['invalid'] });
+      expect(status).toEqual(400);
+      expect(body).toEqual(factory.responses.validationError([{ path: ['ids', 0], message: 'Invalid UUID' }]));
+    });
+  });
 });

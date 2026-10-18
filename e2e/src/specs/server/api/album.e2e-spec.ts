@@ -4,10 +4,16 @@ import {
   AlbumUserRole,
   AssetMediaResponseDto,
   AssetOrder,
+  AssetVisibility,
   deleteUserAdmin,
   getAlbumInfo,
+  getAllAlbums,
+  lockAuthSession,
   LoginResponseDto,
+  setupPinCode,
   SharedLinkType,
+  unlockAuthSession,
+  updateAssets,
 } from '@immich/sdk';
 import { createUserDto } from 'src/fixtures.js';
 import { errorDto } from 'src/responses.js';
@@ -501,6 +507,7 @@ describe('/albums', () => {
         hasSharedLink: false,
         assetCount: 0,
         isActivityEnabled: true,
+        isLocked: false,
         order: AssetOrder.Desc,
       });
     });
@@ -803,6 +810,156 @@ describe('/albums', () => {
 
       expect(status).toBe(400);
       expect(body).toEqual(errorDto.badRequest('User is owner'));
+    });
+  });
+
+  describe('album locking', () => {
+    const pinCode = '123456';
+    let user5: LoginResponseDto;
+    let lockedAsset: AssetMediaResponseDto;
+    let timelineAsset: AssetMediaResponseDto;
+    let sourceAlbum: AlbumResponseDto;
+    let lockedAlbumId: string;
+
+    const headers = () => ({ headers: asBearerAuth(user5.accessToken) });
+
+    beforeAll(async () => {
+      user5 = await utils.userSetup(admin.accessToken, createUserDto.create('album-lock'));
+      [lockedAsset, timelineAsset] = await Promise.all([
+        utils.createAsset(user5.accessToken),
+        utils.createAsset(user5.accessToken),
+      ]);
+      await setupPinCode({ pinCodeSetupDto: { pinCode } }, headers());
+      await updateAssets(
+        { assetBulkUpdateDto: { ids: [lockedAsset.id], visibility: AssetVisibility.Locked } },
+        headers(),
+      );
+      sourceAlbum = await utils.createAlbum(user5.accessToken, {
+        albumName: 'to be locked',
+        assetIds: [timelineAsset.id],
+      });
+    });
+
+    it('should require an elevated session to create a locked album', async () => {
+      const { status } = await request(app)
+        .post('/albums')
+        .send({ albumName: 'locked', isLocked: true, assetIds: [lockedAsset.id] })
+        .set('Authorization', `Bearer ${user5.accessToken}`);
+      expect(status).toBe(401);
+    });
+
+    it('should lock an album without an elevated session', async () => {
+      const { status, body } = await request(app)
+        .post('/albums/lock')
+        .send({ ids: [sourceAlbum.id] })
+        .set('Authorization', `Bearer ${user5.accessToken}`);
+      expect(status).toBe(201);
+      expect(body).toEqual([
+        {
+          id: sourceAlbum.id,
+          success: true,
+          albumId: expect.any(String),
+          assetCount: 1,
+          skippedAssetCount: 0,
+          removed: true,
+        },
+      ]);
+      lockedAlbumId = body[0].albumId;
+    });
+
+    it('should hide a locked album from a non-elevated session', async () => {
+      const albums = await getAllAlbums({}, headers());
+      expect(albums.map(({ id }) => id)).not.toContain(lockedAlbumId);
+      expect(albums.map(({ id }) => id)).not.toContain(sourceAlbum.id);
+
+      const { status, body } = await request(app)
+        .get(`/albums/${lockedAlbumId}`)
+        .set('Authorization', `Bearer ${user5.accessToken}`);
+      expect(status).toBe(401);
+      expect(body).toEqual(expect.objectContaining({ message: 'Elevated permission is required' }));
+    });
+
+    it('should not tell a locked album of another user apart from a missing one', async () => {
+      const { status } = await request(app)
+        .get(`/albums/${lockedAlbumId}`)
+        .set('Authorization', `Bearer ${user1.accessToken}`);
+      expect(status).toBe(400);
+    });
+
+    it('should require an elevated session to unlock an album', async () => {
+      const { status } = await request(app)
+        .post('/albums/unlock')
+        .send({ ids: [lockedAlbumId] })
+        .set('Authorization', `Bearer ${user5.accessToken}`);
+      expect(status).toBe(401);
+    });
+
+    it('should list a locked album for an elevated session', async () => {
+      await unlockAuthSession({ sessionUnlockDto: { pinCode } }, headers());
+
+      const albums = await getAllAlbums({}, headers());
+      expect(albums).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: lockedAlbumId, isLocked: true, assetCount: 1 })]),
+      );
+
+      const { status, body } = await request(app)
+        .get(`/albums/${lockedAlbumId}`)
+        .set('Authorization', `Bearer ${user5.accessToken}`);
+      expect(status).toBe(200);
+      expect(body).toEqual(expect.objectContaining({ id: lockedAlbumId, isLocked: true, assetCount: 1 }));
+    });
+
+    it('should create a locked album with locked assets for an elevated session', async () => {
+      const { status, body } = await request(app)
+        .post('/albums')
+        .send({ albumName: 'locked', isLocked: true, assetIds: [lockedAsset.id] })
+        .set('Authorization', `Bearer ${user5.accessToken}`);
+      expect(status).toBe(201);
+      expect(body).toEqual(expect.objectContaining({ albumName: 'locked', isLocked: true }));
+
+      const album = await getAlbumInfo({ id: body.id }, headers());
+      expect(album.assetCount).toBe(1);
+    });
+
+    it('should not create a locked album with assets that are not locked', async () => {
+      const asset = await utils.createAsset(user5.accessToken);
+      const { status, body } = await request(app)
+        .post('/albums')
+        .send({ albumName: 'locked', isLocked: true, assetIds: [lockedAsset.id, asset.id] })
+        .set('Authorization', `Bearer ${user5.accessToken}`);
+      expect(status).toBe(400);
+      expect(body).toEqual(errorDto.badRequest('A locked album can only contain assets that are already locked'));
+    });
+
+    it('should unlock an album with an elevated session', async () => {
+      const { status, body } = await request(app)
+        .post('/albums/unlock')
+        .send({ ids: [lockedAlbumId] })
+        .set('Authorization', `Bearer ${user5.accessToken}`);
+      expect(status).toBe(201);
+      expect(body).toEqual([
+        {
+          id: lockedAlbumId,
+          success: true,
+          albumId: expect.any(String),
+          assetCount: 1,
+          skippedAssetCount: 0,
+          removed: true,
+        },
+      ]);
+
+      const album = await getAlbumInfo({ id: body[0].albumId }, headers());
+      expect(album).toEqual(expect.objectContaining({ albumName: 'to be locked', isLocked: false, assetCount: 1 }));
+    });
+
+    it('should keep an unlocked album visible after the session is locked again', async () => {
+      await lockAuthSession(headers());
+
+      const albums = await getAllAlbums({}, headers());
+      expect(albums).toEqual(
+        expect.arrayContaining([expect.objectContaining({ albumName: 'to be locked', isLocked: false })]),
+      );
+      expect(albums.map(({ isLocked }) => isLocked)).not.toContain(true);
     });
   });
 });

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AuthDto } from 'src/dtos/auth.dto.js';
 import { MapMarkerDto, MapMarkerResponseDto, MapReverseGeocodeDto } from 'src/dtos/map.dto.js';
 import { BaseService } from 'src/services/base.service.js';
+import { hasElevatedPermission } from 'src/utils/access.js';
 import { getMyPartnerIds } from 'src/utils/asset.util.js';
 
 @Injectable()
@@ -13,7 +14,9 @@ export class MapService extends BaseService {
       userIds.push(...partnerIds);
     }
 
-    const albumIds = options.withSharedAlbums ? await this.albumRepository.getAllIds(auth.user.id) : [];
+    const albumIds = options.withSharedAlbums
+      ? await this.albumRepository.getAllIds(auth.user.id, { withLocked: hasElevatedPermission(auth) })
+      : [];
 
     return this.mapRepository.getMapMarkers(auth.user.id, userIds, albumIds, options);
   }

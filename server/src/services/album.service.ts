@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   AddUsersDto,
+  AlbumLockResponseDto,
   AlbumResponseDto,
   AlbumStatisticsResponseDto,
   AlbumsAddAssetsDto,
@@ -14,9 +15,10 @@ import {
 import { BulkIdErrorReason, BulkIdResponseDto, BulkIdsDto } from 'src/dtos/asset-ids.response.dto.js';
 import { AuthDto } from 'src/dtos/auth.dto.js';
 import { MapMarkerResponseDto } from 'src/dtos/map.dto.js';
-import { AlbumUserRole, Permission } from 'src/enum.js';
-import { AlbumAssetCount, AlbumInfoOptions } from 'src/repositories/album.repository.js';
+import { AlbumUserRole, AssetVisibility, JobName, Permission } from 'src/enum.js';
+import { AlbumAssetCount, AlbumConversion, AlbumInfoOptions } from 'src/repositories/album.repository.js';
 import { BaseService } from 'src/services/base.service.js';
+import { hasElevatedPermission, requireElevatedPermission } from 'src/utils/access.js';
 import { addAssets, removeAssets } from 'src/utils/asset.util.js';
 import { asDateTimeString } from 'src/utils/date.js';
 import { findOrFail } from 'src/utils/misc.js';
@@ -25,10 +27,11 @@ import { getPreferences } from 'src/utils/preferences.js';
 @Injectable()
 export class AlbumService extends BaseService {
   async getStatistics(auth: AuthDto): Promise<AlbumStatisticsResponseDto> {
+    const withLocked = hasElevatedPermission(auth);
     const [owned, shared, notShared] = await Promise.all([
-      this.albumRepository.getAll(auth.user.id, { isOwned: true }),
-      this.albumRepository.getAll(auth.user.id, { isShared: true }),
-      this.albumRepository.getAll(auth.user.id, { isOwned: true, isShared: false }),
+      this.albumRepository.getAll(auth.user.id, { isOwned: true, withLocked }),
+      this.albumRepository.getAll(auth.user.id, { isShared: true, withLocked }),
+      this.albumRepository.getAll(auth.user.id, { isOwned: true, isShared: false, withLocked }),
     ]);
 
     return {
@@ -42,18 +45,22 @@ export class AlbumService extends BaseService {
     const ownerId = auth.user.id;
     await this.albumRepository.updateThumbnails();
 
+    // A locked album does not exist for a session that has not been elevated with the PIN: it is
+    // left out of every list entirely (name, count and thumbnail included), the same way the
+    // locked folder itself is hidden. PIN elevation is session-wide, not per-album: once
+    // elevated, the requester already has standing access to open any of their locked albums, so
+    // it is safe to list them with their real counts.
+    const withLocked = hasElevatedPermission(auth);
+
     const albums = assetId
-      ? await this.albumRepository.getByAssetId(ownerId, assetId)
-      : await this.albumRepository.getAll(ownerId, rest);
+      ? await this.albumRepository.getByAssetId(ownerId, assetId, withLocked)
+      : await this.albumRepository.getAll(ownerId, { ...rest, withLocked });
 
     if (albums.length === 0) {
       return [];
     }
 
-    // PIN elevation is session-wide, not per-album: once elevated, the requester already has
-    // standing access to open any of their locked albums with no extra friction. So it's safe
-    // to also reveal locked albums' real counts here rather than showing a stale 0.
-    const includeLockedAlbumAssets = !!auth.session?.hasElevatedPermission;
+    const includeLockedAlbumAssets = withLocked;
 
     // Get asset count for each album. Then map the result to an object:
     // { [albumId]: assetCount }
@@ -78,7 +85,7 @@ export class AlbumService extends BaseService {
   }
 
   async get(auth: AuthDto, id: string): Promise<AlbumResponseDto> {
-    await this.requireAccess({ auth, permission: Permission.AlbumRead, ids: [id] });
+    await this.requireReadAccess(auth, id);
     await this.albumRepository.updateThumbnails();
     const album = await this.findOrFail(id, auth.user.id, { withAssets: false });
     // requireAccess(AlbumRead) above already denies access to a locked album unless the
@@ -113,6 +120,16 @@ export class AlbumService extends BaseService {
   async create(auth: AuthDto, dto: CreateAlbumDto): Promise<AlbumResponseDto> {
     const albumUsers = (dto.albumUsers || []).filter(({ userId }) => userId !== auth.user.id);
 
+    if (dto.isLocked) {
+      // A locked album is invisible to a non-elevated session, so creating one without the PIN
+      // would produce an album the requester cannot see or use. Require elevation up front.
+      requireElevatedPermission(auth);
+
+      if (albumUsers.length > 0) {
+        throw new BadRequestException('A locked album cannot be shared');
+      }
+    }
+
     for (const { userId } of albumUsers) {
       const exists = await this.userRepository.get(userId, {});
       if (!exists) {
@@ -121,22 +138,28 @@ export class AlbumService extends BaseService {
       }
     }
 
-    const allowedAssetIdsSet = await this.checkAccess({
-      auth,
-      permission: Permission.AssetShare,
-      ids: dto.assetIds || [],
-    });
-    const assetIds = [...allowedAssetIdsSet].map((id) => id);
+    let assetIds: string[];
+    if (dto.isLocked) {
+      // A locked album can only ever contain assets that are already locked (already sitting in
+      // the locked folder). Permission.AssetShare hardcodes non-elevated access, which would drop
+      // every locked asset before the check below could run -- so the album would silently end
+      // up empty. AssetUpdate respects elevation, and organizing an asset the requester already
+      // owns into a locked album they also own doesn't expose it to anyone else. Every requested
+      // asset must pass: nothing is dropped silently, the request is rejected instead.
+      assetIds = [...new Set(dto.assetIds || [])];
+      await this.requireAccess({ auth, permission: Permission.AssetUpdate, ids: assetIds });
 
-    // A locked album can only ever be created already-locked, and can only ever contain assets
-    // that are already locked (i.e. already sitting in the locked folder) -- there's no "lock an
-    // existing album" conversion path anymore, so every asset given here must already have
-    // Locked visibility, or creation is rejected outright.
-    if (dto.isLocked && assetIds.length > 0) {
       const lockedAssetIds = await this.assetRepository.getLockedAssetIds(assetIds);
       if (lockedAssetIds.size !== assetIds.length) {
         throw new BadRequestException('A locked album can only contain assets that are already locked');
       }
+    } else {
+      const allowedAssetIdsSet = await this.checkAccess({
+        auth,
+        permission: Permission.AssetShare,
+        ids: dto.assetIds || [],
+      });
+      assetIds = [...allowedAssetIdsSet];
     }
 
     const userMetadata = await this.userRepository.getMetadata(auth.user.id);
@@ -216,24 +239,15 @@ export class AlbumService extends BaseService {
       const existingAssetIds = await this.albumRepository.getAssetIds(id, dto.ids);
       const notPresentAssetIds = dto.ids.filter((assetId) => !existingAssetIds.has(assetId));
 
-      // An asset can only ever belong to one locked album at a time -- if it's already in a
-      // different locked album, reject it outright rather than silently moving it out of that
-      // album.
-      const conflictingAssetIds = await this.albumRepository.getAssetIdsInOtherLockedAlbums(notPresentAssetIds, id);
-      const checkableAssetIds = notPresentAssetIds.filter((assetId) => !conflictingAssetIds.has(assetId));
-
       const allowedAssetIds = await this.checkAccess({
         auth,
         permission: Permission.AssetUpdate,
-        ids: checkableAssetIds,
+        ids: notPresentAssetIds,
       });
 
       results = dto.ids.map((assetId) => {
         if (existingAssetIds.has(assetId)) {
           return { id: assetId, success: false, error: BulkIdErrorReason.DUPLICATE };
-        }
-        if (conflictingAssetIds.has(assetId)) {
-          return { id: assetId, success: false, error: BulkIdErrorReason.ALREADY_IN_LOCKED_ALBUM };
         }
         if (!allowedAssetIds.has(assetId)) {
           return { id: assetId, success: false, error: BulkIdErrorReason.NO_PERMISSION };
@@ -289,16 +303,16 @@ export class AlbumService extends BaseService {
       return results;
     }
 
-    // An asset can only ever belong to one locked album at a time -- so a single add-to-albums
-    // call can target any number of unlocked albums together, or exactly one locked album alone,
-    // but never 2+ locked albums or a locked+unlocked mix. Mirrors the client-side check in the
-    // album picker, enforced here too for any caller.
+    // Locked and unlocked albums are separate spaces: a locked asset can sit in any number of
+    // locked albums, but a single add-to-albums call can never target both kinds at once, since
+    // the same assets can't be valid for both. Mirrors the client-side filtering in the album
+    // picker, enforced here too for any caller.
     const lockedTargetAlbumIds = await this.albumRepository.getLockedAlbumIds([...allowedAlbumIds]);
-    if (lockedTargetAlbumIds.size > 1 || (lockedTargetAlbumIds.size === 1 && allowedAlbumIds.size > 1)) {
-      throw new BadRequestException('Assets can only be added to one locked album at a time');
+    if (lockedTargetAlbumIds.size > 0 && lockedTargetAlbumIds.size !== allowedAlbumIds.size) {
+      throw new BadRequestException('Assets cannot be added to locked and unlocked albums at the same time');
     }
 
-    const isLockedTarget = lockedTargetAlbumIds.size === 1;
+    const isLockedTarget = lockedTargetAlbumIds.size > 0;
     let allowedAssetIds: Set<string>;
 
     if (isLockedTarget) {
@@ -309,25 +323,12 @@ export class AlbumService extends BaseService {
         throw new BadRequestException('A locked album can only contain assets that are already locked');
       }
 
-      // An asset can only ever belong to one locked album at a time -- if it's already in a
-      // different locked album, reject it outright rather than moving it out of that album.
-      const [targetAlbumId] = lockedTargetAlbumIds;
-      const conflictingAssetIds = await this.albumRepository.getAssetIdsInOtherLockedAlbums(
-        dto.assetIds,
-        targetAlbumId,
-      );
-      if (conflictingAssetIds.size === dto.assetIds.length) {
-        results.error = BulkIdErrorReason.ALREADY_IN_LOCKED_ALBUM;
-        return results;
-      }
-      const checkableAssetIds = dto.assetIds.filter((assetId) => !conflictingAssetIds.has(assetId));
-
       // Permission.AssetShare (used below for the unlocked-album path) hardcodes non-elevated
       // access, since it also covers shared-link/album-sharing paths that must never expose locked
       // content -- so it would reject every one of these assets outright. AssetUpdate respects
       // elevation, and organizing an asset the requester already owns into a locked album they
       // also own doesn't expose it to anyone else.
-      allowedAssetIds = await this.checkAccess({ auth, permission: Permission.AssetUpdate, ids: checkableAssetIds });
+      allowedAssetIds = await this.checkAccess({ auth, permission: Permission.AssetUpdate, ids: dto.assetIds });
     } else {
       allowedAssetIds = await this.checkAccess({ auth, permission: Permission.AssetShare, ids: dto.assetIds });
     }
@@ -401,10 +402,122 @@ export class AlbumService extends BaseService {
     return results;
   }
 
+  lock(auth: AuthDto, dto: BulkIdsDto): Promise<AlbumLockResponseDto[]> {
+    return this.convert(auth, dto.ids, true);
+  }
+
+  unlock(auth: AuthDto, dto: BulkIdsDto): Promise<AlbumLockResponseDto[]> {
+    return this.convert(auth, dto.ids, false);
+  }
+
+  /**
+   * Move each album's assets into a fresh album of the other kind: into a new locked album when
+   * locking, into a new ordinary album when unlocking. Only the requester's own assets move; any
+   * others stay behind in the source album, which is removed once it is empty.
+   */
+  private async convert(auth: AuthDto, ids: string[], isLocked: boolean): Promise<AlbumLockResponseDto[]> {
+    if (!isLocked) {
+      requireElevatedPermission(auth);
+    }
+
+    const albumIds = [...new Set(ids)];
+    // Converting replaces the album, so it needs the same owner access as deleting it. For a
+    // non-elevated session that check also hides locked albums, so unlocking needs elevation.
+    const allowedAlbumIds = await this.checkAccess({ auth, permission: Permission.AlbumDelete, ids: albumIds });
+
+    const albums = [];
+    for (const id of albumIds) {
+      if (!allowedAlbumIds.has(id)) {
+        continue;
+      }
+
+      const album = await this.findOrFail(id, auth.user.id, { withAssets: false });
+      if (album.isLocked === isLocked) {
+        throw new BadRequestException(isLocked ? 'Album is already locked' : 'Album is not locked');
+      }
+
+      albums.push(album);
+    }
+
+    // Changing the visibility strips every album membership, so capture which assets are in which
+    // album before anything is written.
+    const albumAssetIds = new Map<string, string[]>();
+    for (const album of albums) {
+      albumAssetIds.set(album.id, await this.albumRepository.getAllAssetIds(album.id));
+    }
+
+    // Only the requester's own assets can change visibility; anything else stays where it is.
+    const ownedAssetIds = await this.checkAccess({
+      auth,
+      permission: Permission.AssetUpdate,
+      ids: albumAssetIds.values().toArray().flat(),
+    });
+
+    const conversions = new Map<string, AlbumConversion>();
+    for (const album of albums) {
+      const assetIds = albumAssetIds.get(album.id)!.filter((assetId) => ownedAssetIds.has(assetId));
+      const keepsThumbnail = !!album.albumThumbnailAssetId && assetIds.includes(album.albumThumbnailAssetId);
+      conversions.set(album.id, {
+        sourceAlbumId: album.id,
+        album: {
+          albumName: album.albumName,
+          description: album.description,
+          order: album.order,
+          albumThumbnailAssetId: keepsThumbnail ? album.albumThumbnailAssetId : (assetIds[0] ?? null),
+          isLocked,
+        },
+        assetIds,
+      });
+    }
+
+    const converted = new Map<string, { albumId: string; removed: boolean }>();
+    if (conversions.size > 0) {
+      const results = await this.albumRepository.convert({
+        ownerId: auth.user.id,
+        visibility: isLocked ? AssetVisibility.Locked : AssetVisibility.Timeline,
+        albums: conversions.values().toArray(),
+      });
+      for (const result of results) {
+        converted.set(result.sourceAlbumId, result);
+      }
+    }
+
+    if (ownedAssetIds.size > 0) {
+      await this.jobRepository.queueAll([...ownedAssetIds].map((id) => ({ name: JobName.SidecarWrite, data: { id } })));
+    }
+
+    return albumIds.map((id) => {
+      const conversion = conversions.get(id);
+      const result = converted.get(id);
+      if (!conversion || !result) {
+        return {
+          id,
+          success: false,
+          error: BulkIdErrorReason.NO_PERMISSION,
+          assetCount: 0,
+          skippedAssetCount: 0,
+          removed: false,
+        };
+      }
+
+      return {
+        id,
+        success: true,
+        albumId: result.albumId,
+        assetCount: conversion.assetIds.length,
+        skippedAssetCount: albumAssetIds.get(id)!.length - conversion.assetIds.length,
+        removed: result.removed,
+      };
+    });
+  }
+
   async addUsers(auth: AuthDto, id: string, { albumUsers }: AddUsersDto): Promise<AlbumResponseDto> {
     await this.requireAccess({ auth, permission: Permission.AlbumShare, ids: [id] });
 
     const album = await this.findOrFail(id, auth.user.id, { withAssets: false });
+    if (album.isLocked) {
+      throw new BadRequestException('A locked album cannot be shared');
+    }
 
     for (const { userId, role } of albumUsers) {
       if (role === AlbumUserRole.Owner) {
@@ -467,6 +580,33 @@ export class AlbumService extends BaseService {
     }
 
     await this.albumUserRepository.update({ albumId: id, userId }, { role: dto.role });
+  }
+
+  /**
+   * Like requireAccess(AlbumRead), but tells a locked album apart from a missing one: an album the
+   * requester has access to but which is locked answers 401 ("elevated permission is required")
+   * to a non-elevated session, so a client can ask for the PIN and come back. Nothing else about
+   * the album is revealed, and an album the requester has no access to is still "not found".
+   */
+  private async requireReadAccess(auth: AuthDto, id: string) {
+    const allowed = await this.checkAccess({ auth, permission: Permission.AlbumRead, ids: [id] });
+    if (allowed.has(id)) {
+      return;
+    }
+
+    if (auth.session && !hasElevatedPermission(auth)) {
+      const elevated: AuthDto = { ...auth, session: { ...auth.session, hasElevatedPermission: true } };
+      const allowedWhenElevated = await this.checkAccess({
+        auth: elevated,
+        permission: Permission.AlbumRead,
+        ids: [id],
+      });
+      if (allowedWhenElevated.has(id)) {
+        requireElevatedPermission(auth);
+      }
+    }
+
+    throw new BadRequestException(`Not found or no ${Permission.AlbumRead} access`);
   }
 
   private findOrFail(id: string, authUserId: string, options: AlbumInfoOptions) {

@@ -138,10 +138,23 @@ describe(SharedLinkService.name, () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('should not allow an album shared link for a locked album', async () => {
+      const album = AlbumFactory.from({ isLocked: true }).build();
+      mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getLockedAlbumIds.mockResolvedValue(new Set([album.id]));
+
+      await expect(
+        sut.create(authStub.admin, { type: SharedLinkType.Album, albumId: album.id }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(mocks.sharedLink.create).not.toHaveBeenCalled();
+    });
+
     it('should create an album shared link', async () => {
       const album = AlbumFactory.from().asset().build();
       const sharedLink = SharedLinkFactory.from().album(album).build();
       mocks.access.album.checkOwnerAccess.mockResolvedValue(new Set([album.id]));
+      mocks.album.getLockedAlbumIds.mockResolvedValue(new Set());
       mocks.sharedLink.create.mockResolvedValue(getForSharedLink(sharedLink));
 
       await sut.create(authStub.admin, { type: SharedLinkType.Album, albumId: album.id });

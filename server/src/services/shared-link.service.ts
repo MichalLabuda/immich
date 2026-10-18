@@ -73,6 +73,11 @@ export class SharedLinkService extends BaseService {
           throw new BadRequestException('Invalid albumId');
         }
         await this.requireAccess({ auth, permission: Permission.AlbumShare, ids: [dto.albumId] });
+
+        const lockedAlbumIds = await this.albumRepository.getLockedAlbumIds([dto.albumId]);
+        if (lockedAlbumIds.size > 0) {
+          throw new BadRequestException('A locked album cannot be shared');
+        }
         break;
       }
 

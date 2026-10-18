@@ -75,6 +75,21 @@ const AlbumsAddAssetsResponseSchema = z
   })
   .meta({ id: 'AlbumsAddAssetsResponseDto' });
 
+const AlbumLockResponseSchema = z
+  .object({
+    id: z.uuidv4().describe('Source album ID'),
+    success: z.boolean().describe('Whether the album was moved'),
+    error: BulkIdErrorReasonSchema.optional(),
+    albumId: z.uuidv4().optional().describe('ID of the new album holding the moved assets'),
+    assetCount: z.int().min(0).describe('Number of assets moved to the new album'),
+    skippedAssetCount: z
+      .int()
+      .min(0)
+      .describe('Number of assets left in the source album because they are owned by other users'),
+    removed: z.boolean().describe('Whether the emptied source album was removed'),
+  })
+  .meta({ id: 'AlbumLockResponseDto' });
+
 const UpdateAlbumSchema = z
   .object({
     albumName: z.string().optional().describe('Album name'),
@@ -215,6 +230,7 @@ export class AlbumUserCreateDto extends createZodDto(AlbumUserCreateSchema) {}
 export class CreateAlbumDto extends createZodDto(CreateAlbumSchema) {}
 export class AlbumsAddAssetsDto extends createZodDto(AlbumsAddAssetsSchema) {}
 export class AlbumsAddAssetsResponseDto extends createZodDto(AlbumsAddAssetsResponseSchema) {}
+export class AlbumLockResponseDto extends createZodDto(AlbumLockResponseSchema) {}
 export class UpdateAlbumDto extends createZodDto(UpdateAlbumSchema) {}
 export class GetAlbumsDto extends createZodDto(GetAlbumsSchema) {}
 export class AlbumStatisticsResponseDto extends createZodDto(AlbumStatisticsResponseSchema) {}

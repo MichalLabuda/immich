@@ -801,7 +801,10 @@ export class AssetRepository {
             return withBoundingBox(withBoundingCircle, bbox);
           })
           .$if(!!options.visibility, (qb) => qb.where('asset.visibility', '=', options.visibility!))
-          .$if(options.visibility === undefined && !(options.includeLockedAlbumAssets && options.albumId), withDefaultVisibility)
+          .$if(
+            options.visibility === undefined && !(options.includeLockedAlbumAssets && options.albumId),
+            withDefaultVisibility,
+          )
           .$if(options.visibility === undefined && !!options.includeLockedAlbumAssets && !!options.albumId, (qb) =>
             qb.where('asset.visibility', 'in', [
               sql.lit(AssetVisibility.Archive),
@@ -889,7 +892,10 @@ export class AssetRepository {
           .$if(!!options.withCoordinates, (qb) => qb.select(['asset_exif.latitude', 'asset_exif.longitude']))
           .where('asset.deletedAt', options.isTrashed ? 'is not' : 'is', null)
           .$if(!!options.visibility, (qb) => qb.where('asset.visibility', '=', options.visibility!))
-          .$if(options.visibility === undefined && !(options.includeLockedAlbumAssets && options.albumId), withDefaultVisibility)
+          .$if(
+            options.visibility === undefined && !(options.includeLockedAlbumAssets && options.albumId),
+            withDefaultVisibility,
+          )
           .$if(options.visibility === undefined && !!options.includeLockedAlbumAssets && !!options.albumId, (qb) =>
             qb.where('asset.visibility', 'in', [
               sql.lit(AssetVisibility.Archive),
