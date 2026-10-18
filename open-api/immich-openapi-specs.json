@@ -2374,6 +2374,60 @@
         "x-immich-state": "Stable"
       }
     },
+    "/albums/lock": {
+      "post": {
+        "description": "Move the assets of the given albums to the locked folder. Each album is replaced by a new locked album holding the assets owned by the authenticated user. An album that still holds assets of other users is kept.",
+        "operationId": "lockAlbums",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkIdsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AlbumLockResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Lock albums",
+        "tags": [
+          "Albums"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3",
+            "state": "Added"
+          }
+        ],
+        "x-immich-permission": "album.update"
+      }
+    },
     "/albums/statistics": {
       "get": {
         "description": "Returns statistics about the albums available to the authenticated user.",
@@ -2422,6 +2476,60 @@
         ],
         "x-immich-permission": "album.statistics",
         "x-immich-state": "Stable"
+      }
+    },
+    "/albums/unlock": {
+      "post": {
+        "description": "Move the assets of the given locked albums out of the locked folder. Requires an elevated session. Each album is replaced by a new album holding the assets owned by the authenticated user. An album that still holds assets of other users is kept.",
+        "operationId": "unlockAlbums",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkIdsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AlbumLockResponseDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "cookie": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Unlock albums",
+        "tags": [
+          "Albums"
+        ],
+        "x-immich-history": [
+          {
+            "version": "v3",
+            "state": "Added"
+          }
+        ],
+        "x-immich-permission": "album.update"
       }
     },
     "/albums/{id}": {
@@ -19715,6 +19823,53 @@
         ],
         "type": "object"
       },
+      "AlbumLockResponseDto": {
+        "properties": {
+          "albumId": {
+            "description": "ID of the new album holding the moved assets",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+            "type": "string"
+          },
+          "assetCount": {
+            "description": "Number of assets moved to the new album",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error": {
+            "$ref": "#/components/schemas/BulkIdErrorReason"
+          },
+          "id": {
+            "description": "Source album ID",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+            "type": "string"
+          },
+          "removed": {
+            "description": "Whether the emptied source album was removed",
+            "type": "boolean"
+          },
+          "skippedAssetCount": {
+            "description": "Number of assets left in the source album because they are owned by other users",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "success": {
+            "description": "Whether the album was moved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "assetCount",
+          "id",
+          "removed",
+          "skippedAssetCount",
+          "success"
+        ],
+        "type": "object"
+      },
       "AlbumResponseDto": {
         "properties": {
           "albumName": {
@@ -19787,6 +19942,10 @@
             "description": "Activity feed enabled",
             "type": "boolean"
           },
+          "isLocked": {
+            "description": "Album is locked and requires PIN elevation to view",
+            "type": "boolean"
+          },
           "lastModifiedAssetTimestamp": {
             "description": "Last modified asset timestamp",
             "format": "date-time",
@@ -19820,6 +19979,7 @@
           "hasSharedLink",
           "id",
           "isActivityEnabled",
+          "isLocked",
           "shared",
           "updatedAt"
         ],
@@ -21807,6 +21967,10 @@
                 "description": "Sending an empty string is deprecated; send null instead. Empty strings will no longer be coerced to null in v4."
               }
             ]
+          },
+          "isLocked": {
+            "description": "Create the album already locked. Every asset in `assetIds` must already have Locked visibility (i.e. already be in the locked folder) -- an album can only ever be locked at creation time, and can only ever contain assets that are already locked.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -30276,6 +30440,10 @@
             "description": "Is activity enabled",
             "type": "boolean"
           },
+          "isLocked": {
+            "description": "Album is locked and requires PIN elevation to view",
+            "type": "boolean"
+          },
           "name": {
             "description": "Album name",
             "type": "string"
@@ -30301,6 +30469,7 @@
           "description",
           "id",
           "isActivityEnabled",
+          "isLocked",
           "name",
           "order",
           "thumbnailAssetId",
@@ -31389,22 +31558,33 @@
           "PartnerStackV1",
           "AlbumV1",
           "AlbumV2",
+          "AlbumV3",
           "AlbumDeleteV1",
           "AlbumUserV1",
+          "AlbumUserV2",
           "AlbumUserBackfillV1",
+          "AlbumUserBackfillV2",
           "AlbumUserDeleteV1",
           "AlbumAssetCreateV1",
           "AlbumAssetCreateV2",
+          "AlbumAssetCreateV3",
           "AlbumAssetUpdateV1",
           "AlbumAssetUpdateV2",
+          "AlbumAssetUpdateV3",
           "AlbumAssetBackfillV1",
           "AlbumAssetBackfillV2",
+          "AlbumAssetBackfillV3",
           "AlbumAssetExifCreateV1",
+          "AlbumAssetExifCreateV2",
           "AlbumAssetExifUpdateV1",
+          "AlbumAssetExifUpdateV2",
           "AlbumAssetExifBackfillV1",
+          "AlbumAssetExifBackfillV2",
           "AlbumToAssetV1",
+          "AlbumToAssetV2",
           "AlbumToAssetDeleteV1",
           "AlbumToAssetBackfillV1",
+          "AlbumToAssetBackfillV2",
           "MemoryV1",
           "MemoryV2",
           "MemoryDeleteV1",
@@ -31814,11 +31994,16 @@
         "enum": [
           "AlbumsV1",
           "AlbumsV2",
+          "AlbumsV3",
           "AlbumUsersV1",
+          "AlbumUsersV2",
           "AlbumToAssetsV1",
+          "AlbumToAssetsV2",
           "AlbumAssetsV1",
           "AlbumAssetsV2",
+          "AlbumAssetsV3",
           "AlbumAssetExifsV1",
+          "AlbumAssetExifsV2",
           "AssetsV1",
           "AssetsV2",
           "AssetExifsV1",

@@ -878,6 +878,8 @@ export type AlbumResponseDto = {
     id: string;
     /** Activity feed enabled */
     isActivityEnabled: boolean;
+    /** Album is locked and requires PIN elevation to view */
+    isLocked: boolean;
     /** Last modified asset timestamp */
     lastModifiedAssetTimestamp?: string;
     order?: AssetOrder;
@@ -902,6 +904,8 @@ export type CreateAlbumDto = {
     assetIds?: string[];
     /** Album description */
     description?: string | null;
+    /** Create the album already locked. Every asset in `assetIds` must already have Locked visibility (i.e. already be in the locked folder) -- an album can only ever be locked at creation time, and can only ever contain assets that are already locked. */
+    isLocked?: boolean;
 };
 export type AlbumsAddAssetsDto = {
     /** Album IDs */
@@ -912,6 +916,25 @@ export type AlbumsAddAssetsDto = {
 export type AlbumsAddAssetsResponseDto = {
     error?: BulkIdErrorReason;
     /** Operation success */
+    success: boolean;
+};
+export type BulkIdsDto = {
+    /** IDs to process */
+    ids: string[];
+};
+export type AlbumLockResponseDto = {
+    /** ID of the new album holding the moved assets */
+    albumId?: string;
+    /** Number of assets moved to the new album */
+    assetCount: number;
+    error?: BulkIdErrorReason;
+    /** Source album ID */
+    id: string;
+    /** Whether the emptied source album was removed */
+    removed: boolean;
+    /** Number of assets left in the source album because they are owned by other users */
+    skippedAssetCount: number;
+    /** Whether the album was moved */
     success: boolean;
 };
 export type AlbumStatisticsResponseDto = {
@@ -932,10 +955,6 @@ export type UpdateAlbumDto = {
     /** Enable activity feed */
     isActivityEnabled?: boolean;
     order?: AssetOrder;
-};
-export type BulkIdsDto = {
-    /** IDs to process */
-    ids: string[];
 };
 export type BulkIdResponseDto = {
     error?: BulkIdErrorReason;
@@ -3379,6 +3398,8 @@ export type SyncAlbumV2 = {
     id: string;
     /** Is activity enabled */
     isActivityEnabled: boolean;
+    /** Album is locked and requires PIN elevation to view */
+    isLocked: boolean;
     /** Album name */
     name: string;
     order: AssetOrder;
@@ -4419,6 +4440,21 @@ export function addAssetsToAlbums({ albumsAddAssetsDto }: {
     })));
 }
 /**
+ * Lock albums
+ */
+export function lockAlbums({ bulkIdsDto }: {
+    bulkIdsDto: BulkIdsDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 201;
+        data: AlbumLockResponseDto[];
+    }>("/albums/lock", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: bulkIdsDto
+    })));
+}
+/**
  * Retrieve album statistics
  */
 export function getAlbumStatistics(opts?: Oazapfts.RequestOpts) {
@@ -4428,6 +4464,21 @@ export function getAlbumStatistics(opts?: Oazapfts.RequestOpts) {
     }>("/albums/statistics", {
         ...opts
     }));
+}
+/**
+ * Unlock albums
+ */
+export function unlockAlbums({ bulkIdsDto }: {
+    bulkIdsDto: BulkIdsDto;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 201;
+        data: AlbumLockResponseDto[];
+    }>("/albums/unlock", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: bulkIdsDto
+    })));
 }
 /**
  * Delete an album
@@ -8542,22 +8593,33 @@ export enum SyncEntityType {
     PartnerStackV1 = "PartnerStackV1",
     AlbumV1 = "AlbumV1",
     AlbumV2 = "AlbumV2",
+    AlbumV3 = "AlbumV3",
     AlbumDeleteV1 = "AlbumDeleteV1",
     AlbumUserV1 = "AlbumUserV1",
+    AlbumUserV2 = "AlbumUserV2",
     AlbumUserBackfillV1 = "AlbumUserBackfillV1",
+    AlbumUserBackfillV2 = "AlbumUserBackfillV2",
     AlbumUserDeleteV1 = "AlbumUserDeleteV1",
     AlbumAssetCreateV1 = "AlbumAssetCreateV1",
     AlbumAssetCreateV2 = "AlbumAssetCreateV2",
+    AlbumAssetCreateV3 = "AlbumAssetCreateV3",
     AlbumAssetUpdateV1 = "AlbumAssetUpdateV1",
     AlbumAssetUpdateV2 = "AlbumAssetUpdateV2",
+    AlbumAssetUpdateV3 = "AlbumAssetUpdateV3",
     AlbumAssetBackfillV1 = "AlbumAssetBackfillV1",
     AlbumAssetBackfillV2 = "AlbumAssetBackfillV2",
+    AlbumAssetBackfillV3 = "AlbumAssetBackfillV3",
     AlbumAssetExifCreateV1 = "AlbumAssetExifCreateV1",
+    AlbumAssetExifCreateV2 = "AlbumAssetExifCreateV2",
     AlbumAssetExifUpdateV1 = "AlbumAssetExifUpdateV1",
+    AlbumAssetExifUpdateV2 = "AlbumAssetExifUpdateV2",
     AlbumAssetExifBackfillV1 = "AlbumAssetExifBackfillV1",
+    AlbumAssetExifBackfillV2 = "AlbumAssetExifBackfillV2",
     AlbumToAssetV1 = "AlbumToAssetV1",
+    AlbumToAssetV2 = "AlbumToAssetV2",
     AlbumToAssetDeleteV1 = "AlbumToAssetDeleteV1",
     AlbumToAssetBackfillV1 = "AlbumToAssetBackfillV1",
+    AlbumToAssetBackfillV2 = "AlbumToAssetBackfillV2",
     MemoryV1 = "MemoryV1",
     MemoryV2 = "MemoryV2",
     MemoryDeleteV1 = "MemoryDeleteV1",
@@ -8581,11 +8643,16 @@ export enum SyncEntityType {
 export enum SyncRequestType {
     AlbumsV1 = "AlbumsV1",
     AlbumsV2 = "AlbumsV2",
+    AlbumsV3 = "AlbumsV3",
     AlbumUsersV1 = "AlbumUsersV1",
+    AlbumUsersV2 = "AlbumUsersV2",
     AlbumToAssetsV1 = "AlbumToAssetsV1",
+    AlbumToAssetsV2 = "AlbumToAssetsV2",
     AlbumAssetsV1 = "AlbumAssetsV1",
     AlbumAssetsV2 = "AlbumAssetsV2",
+    AlbumAssetsV3 = "AlbumAssetsV3",
     AlbumAssetExifsV1 = "AlbumAssetExifsV1",
+    AlbumAssetExifsV2 = "AlbumAssetExifsV2",
     AssetsV1 = "AssetsV1",
     AssetsV2 = "AssetsV2",
     AssetExifsV1 = "AssetExifsV1",
