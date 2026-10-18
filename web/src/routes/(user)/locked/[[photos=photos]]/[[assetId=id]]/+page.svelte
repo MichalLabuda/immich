@@ -34,10 +34,12 @@
   const options = { visibility: AssetVisibility.Locked };
 
   const handleEscape = () => {
-    if (assetMultiSelectManager.selectionActive) {
-      assetMultiSelectManager.clear();
+    if (!assetMultiSelectManager.selectionActive) {
       return;
     }
+
+    assetMultiSelectManager.clear();
+    return;
   };
 
   const handleMoveOffLockedFolder = (assetIds: string[]) => {

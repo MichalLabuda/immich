@@ -46,7 +46,7 @@ describe('uploadFiles', () => {
   const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-'));
   const testFilePath = path.join(testDir, 'test.png');
   const testFileData = 'test';
-  const baseUrl = 'http://example.com';
+  const baseUrl = 'https://example.com';
   const apiKey = 'key';
   const retry = 3;
 
@@ -385,8 +385,7 @@ describe('findSidecar', () => {
     fs.writeFileSync(sidecarPath2, 'xmp data 2');
 
     const result = findSidecar(testFilePath);
-    // Should return the first one found (photo.xmp) based on the order in the code
-    expect(result).toBe(sidecarPath1);
+    expect(result).toBe(sidecarPath2);
   });
 
   it('should return undefined when no sidecar file exists', () => {

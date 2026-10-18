@@ -23,9 +23,7 @@
 
   type Props = {
     onClose: (albums?: AlbumResponseDto[]) => void;
-    // When provided, this picker is being used to add these assets to whichever album(s) are
-    // selected.
-    assetIds?: string[];
+    selectedItemsCount?: number;
     // When true, only locked albums are offered as targets, and creating a new album creates it
     // already locked. Used exclusively from within the Locked Folder view, where every asset being
     // added is already locked -- a locked album can never be created any other way, and can never
@@ -34,7 +32,7 @@
     lockedOnly?: boolean;
   };
 
-  let { onClose, assetIds, lockedOnly = false }: Props = $props();
+  let { onClose, selectedItemsCount, lockedOnly = false }: Props = $props();
 
   onMount(async () => {
     const allAlbums = await getAllAlbums({});
@@ -148,6 +146,7 @@
         break;
       }
       case 'Control': {
+        // eslint-disable-next-line unicorn/no-late-event-control
         e.preventDefault();
         handleMultiSelect();
         break;
@@ -157,9 +156,15 @@
       }
     }
   };
+
+  const title = $derived(
+    selectedItemsCount === undefined
+      ? $t('select_albums')
+      : $t('add_to_album_item_count', { values: { count: selectedItemsCount } }),
+  );
 </script>
 
-<Modal title={$t('add_to_album')} {onClose} size="small">
+<Modal {title} {onClose} size="small">
   <ModalBody>
     <div class="mb-2 flex max-h-100 flex-col">
       {#if loading}

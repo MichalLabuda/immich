@@ -37,7 +37,6 @@
     assets: AssetResponseDto[];
     viewerAssets?: AssetResponseDto[];
     assetInteraction: AssetMultiSelectManager;
-    disableAssetSelect?: boolean;
     showArchiveIcon?: boolean;
     viewport: Viewport;
     onEndReached?: (() => void) | undefined;
@@ -53,7 +52,6 @@
     assets = $bindable(),
     viewerAssets,
     assetInteraction,
-    disableAssetSelect = false,
     showArchiveIcon = false,
     viewport,
     onEndReached = undefined,
@@ -109,12 +107,14 @@
 
   let lastEndReachedHeight = 0;
   $effect(() => {
-    if (geometry.containerHeight - slidingWindow.bottom <= viewport.height) {
-      const contentHeight = geometry.containerHeight;
-      if (lastEndReachedHeight !== contentHeight) {
-        debouncedOnEndReached();
-        lastEndReachedHeight = contentHeight;
-      }
+    if (geometry.containerHeight - slidingWindow.bottom > viewport.height) {
+      return;
+    }
+
+    const contentHeight = geometry.containerHeight;
+    if (lastEndReachedHeight !== contentHeight) {
+      debouncedOnEndReached();
+      lastEndReachedHeight = contentHeight;
     }
   });
 
@@ -349,7 +349,6 @@
         {@const currentAsset = toTimelineAsset(asset)}
         <div class="absolute" style:overflow="clip" style={getStyle(index)}>
           <Thumbnail
-            readonly={disableAssetSelect}
             onClick={() => {
               if (assetInteraction.selectionActive) {
                 handleSelectAssets(currentAsset);

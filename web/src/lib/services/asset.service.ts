@@ -3,9 +3,12 @@ import {
   AssetMediaSize,
   AssetTypeEnum,
   AssetVisibility,
+  bulkTagAssets,
   getAssetInfo,
+  removeAssetFromAlbum,
   runAssetJobs,
   updateAsset,
+  type AlbumResponseDto,
   type AssetJobsDto,
   type AssetResponseDto,
 } from '@immich/sdk';
@@ -24,6 +27,7 @@ import {
   mdiHeart,
   mdiHeartOutline,
   mdiImageRefreshOutline,
+  mdiImageRemoveOutline,
   mdiImageSearch,
   mdiInformationOutline,
   mdiMagnifyMinusOutline,
@@ -33,6 +37,7 @@ import {
   mdiPlus,
   mdiPresentationPlay,
   mdiShareVariantOutline,
+  mdiTagMultipleOutline,
   mdiTagPlusOutline,
   mdiTune,
 } from '@mdi/js';
@@ -49,14 +54,17 @@ import AssetTagModal from '$lib/modals/AssetTagModal.svelte';
 import ProfileImageCropperModal from '$lib/modals/ProfileImageCropperModal.svelte';
 import SharedLinkCreateModal from '$lib/modals/SharedLinkCreateModal.svelte';
 import { Route } from '$lib/route';
+import { redirectIfLockedAndNotElevated } from '$lib/services/album.service';
 import { SlideshowState, slideshowStore } from '$lib/stores/slideshow.store';
 import { getAssetMediaUrl, getSharedLink, sleep } from '$lib/utils';
 import { downloadUrl } from '$lib/utils';
 import { handleError } from '$lib/utils/handle-error';
 import { getFormatter } from '$lib/utils/i18n';
 
-export const getAssetBulkActions = ($t: MessageFormatter) => {
+export const getAssetBulkActions = ($t: MessageFormatter, album?: AlbumResponseDto) => {
+  const assetIds = assetMultiSelectManager.assets.map((asset) => asset.id);
   const ownedAssets = assetMultiSelectManager.ownedAssets;
+  const isAlbumOwner = album?.albumUsers[0].user.id === authManager.user.id;
 
   const onAction = async (name: AssetJobName) => {
     await handleRunAssetJob({ name, assetIds: ownedAssets.map(({ id }) => id) });
@@ -67,14 +75,42 @@ export const getAssetBulkActions = ($t: MessageFormatter) => {
     title: $t('add_to_album'),
     icon: mdiPlus,
     shortcuts: [{ key: 'l' }],
+    // Every asset of a locked album is already locked and in that album, so there is nothing
+    // this could add it to from within the album.
+    $if: () => !album?.isLocked,
     onAction: () => {
-      const assets = assetMultiSelectManager.assets;
       // Which albums the picker offers depends on what's selected, not where the button was
       // clicked: a locked selection can only go into a locked album, same as opening this from
       // the Locked Folder view itself.
-      const lockedOnly = assets.some((asset) => asset.visibility === AssetVisibility.Locked);
-      modalManager.show(AssetAddToAlbumModal, { assetIds: assets.map((asset) => asset.id), lockedOnly });
+      const lockedOnly = assetMultiSelectManager.assets.some((asset) => asset.visibility === AssetVisibility.Locked);
+      return modalManager.show(AssetAddToAlbumModal, { assetIds, lockedOnly });
     },
+  };
+
+  const CreateSharedLink: ActionItem = {
+    title: $t('share'),
+    icon: mdiShareVariantOutline,
+    onAction: () => modalManager.show(SharedLinkCreateModal, { assetIds }),
+  };
+
+  const RemoveFromAlbum: ActionItem = {
+    title: $t('remove_from_album'),
+    icon: mdiImageRemoveOutline,
+    shortcuts: [{ key: 'l', shift: true }],
+    $if: () => !!album && (isAlbumOwner || assetMultiSelectManager.isAllUserOwned),
+    onAction: () => handleBulkRemoveAssetsFromAlbum(assetIds, album!),
+  };
+
+  const Tag: ActionItem = {
+    title: $t('tag'),
+    icon: mdiTagMultipleOutline,
+    $if: () => authManager.preferences.tags.enabled && assetMultiSelectManager.isAllUserOwned,
+    onAction: async () => {
+      if (await modalManager.show(AssetTagModal, { assetIds })) {
+        assetMultiSelectManager.clear();
+      }
+    },
+    shortcuts: { key: 't' },
   };
 
   const RefreshFacesJob: ActionItem = {
@@ -102,13 +138,27 @@ export const getAssetBulkActions = ($t: MessageFormatter) => {
     $if: () => ownedAssets.every((asset) => asset.isVideo),
   };
 
-  return { AddToAlbum, RefreshFacesJob, RefreshMetadataJob, RegenerateThumbnailJob, TranscodeVideoJob };
+  return {
+    AddToAlbum,
+    CreateSharedLink,
+    RemoveFromAlbum,
+    Tag,
+    RefreshFacesJob,
+    RefreshMetadataJob,
+    RegenerateThumbnailJob,
+    TranscodeVideoJob,
+  };
 };
 
-export const getAssetActions = ($t: MessageFormatter, asset: AssetResponseDto & { stackPrimaryAssetId?: string }) => {
+export const getAssetActions = (
+  $t: MessageFormatter,
+  asset: AssetResponseDto & { stackPrimaryAssetId?: string },
+  album?: AlbumResponseDto,
+) => {
   const sharedLink = getSharedLink();
   const authUser = authManager.authenticated ? authManager.user : undefined;
   const isOwner = !!(authUser && authUser.id === asset.ownerId);
+  const isAlbumOwner = !!(authUser && authUser.id === album?.albumUsers[0].user.id);
   const smartSearchEnabled = featureFlagsManager.value.smartSearch;
 
   const Share: ActionItem = {
@@ -179,6 +229,14 @@ export const getAssetActions = ($t: MessageFormatter, asset: AssetResponseDto & 
     shortcuts: [{ key: 'f' }],
   };
 
+  const Rate: ActionItem = {
+    title: $t('rate_asset'),
+    description: $t('rate_asset_description'),
+    $if: () => isOwner && authManager.preferences.ratings.enabled,
+    onAction: ({ event }) => handleRate(asset, event instanceof KeyboardEvent ? Number(event.key) : NaN),
+    shortcuts: [0, 1, 2, 3, 4, 5].map((key) => ({ key: String(key) })),
+  };
+
   const AddToAlbum: ActionItem = {
     title: $t('add_to_album'),
     icon: mdiPlus,
@@ -189,6 +247,14 @@ export const getAssetActions = ($t: MessageFormatter, asset: AssetResponseDto & 
         assetIds: [asset.id],
         lockedOnly: asset.visibility === AssetVisibility.Locked,
       }),
+  };
+
+  const RemoveFromAlbum: ActionItem = {
+    title: $t('remove_from_album'),
+    icon: mdiImageRemoveOutline,
+    shortcuts: [{ key: 'l', shift: true }],
+    $if: () => !!album && (isOwner || isAlbumOwner),
+    onAction: () => handleRemoveAssetsFromAlbum([asset.id], album!),
   };
 
   const Offline: ActionItem = {
@@ -316,10 +382,12 @@ export const getAssetActions = ($t: MessageFormatter, asset: AssetResponseDto & 
     Info,
     Favorite,
     Unfavorite,
+    Rate,
     PlayMotionPhoto,
     StopMotionPhoto,
     PlaySlideshow,
     AddToAlbum,
+    RemoveFromAlbum,
     ZoomIn,
     ZoomOut,
     Copy,
@@ -407,6 +475,87 @@ const handleUnfavorite = async (asset: AssetResponseDto) => {
     eventManager.emit('AssetUpdate', response);
   } catch (error) {
     handleError(error, $t('errors.unable_to_add_remove_favorites', { values: { favorite: asset.isFavorite } }));
+  }
+};
+
+const handleRate = async (asset: AssetResponseDto, rating: number) => {
+  const $t = await getFormatter();
+
+  if (Number.isNaN(rating)) {
+    toastManager.info($t('rate_asset_description'));
+    return;
+  }
+
+  const newRating = rating === 0 ? null : rating;
+  if (asset.exifInfo && asset.exifInfo.rating === newRating) {
+    return;
+  }
+
+  try {
+    const response = await updateAsset({ id: asset.id, updateAssetDto: { rating: newRating } });
+    eventManager.emit('AssetUpdate', response);
+  } catch (error) {
+    handleError(error, $t('errors.unable_to_set_rating'));
+  }
+};
+
+export const handleTagAssets = async (assetIds: string[], tagIds: string[]) => {
+  const $t = await getFormatter();
+
+  try {
+    const response = await bulkTagAssets({ tagBulkAssetsDto: { assetIds, tagIds } });
+    toastManager.primary($t('tagged_assets', { values: { count: response.count } }));
+    eventManager.emit('AssetsTag', assetIds);
+    return true;
+  } catch (error) {
+    handleError(error, $t('errors.failed_to_tag_assets'));
+    return false;
+  }
+};
+
+const handleBulkRemoveAssetsFromAlbum = async (assetIds: string[], album: AlbumResponseDto) => {
+  const $t = await getFormatter();
+
+  // Removing from a locked album is a mutation on locked content, same as unlock/delete -- the
+  // server already rejects it without an elevated session, so redirect to the PIN prompt instead
+  // of letting a raw access error surface.
+  if (await redirectIfLockedAndNotElevated(album)) {
+    return;
+  }
+
+  const isConfirmed = await modalManager.showDialog({
+    prompt: $t(album.isLocked ? 'remove_assets_locked_album_confirmation' : 'remove_assets_album_confirmation', {
+      values: { count: assetIds.length },
+    }),
+  });
+
+  if (!isConfirmed) {
+    return;
+  }
+
+  await handleRemoveAssetsFromAlbum(assetIds, album);
+  assetMultiSelectManager.clear();
+};
+
+const handleRemoveAssetsFromAlbum = async (assetIds: string[], album: AlbumResponseDto) => {
+  const $t = await getFormatter();
+
+  if (await redirectIfLockedAndNotElevated(album)) {
+    return;
+  }
+
+  try {
+    const results = await removeAssetFromAlbum({
+      id: album.id,
+      bulkIdsDto: { ids: assetIds },
+    });
+
+    const count = results.filter(({ success }) => success).length;
+
+    toastManager.primary($t('assets_removed_count', { values: { count } }));
+    eventManager.emit('AlbumRemoveAssets', { assetIds, albumIds: [album.id] });
+  } catch (error) {
+    handleError(error, $t('errors.error_removing_assets_from_album'));
   }
 };
 
