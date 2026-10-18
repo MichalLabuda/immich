@@ -349,3 +349,37 @@ describe(SyncRequestType.AlbumUsersV1, () => {
     });
   });
 });
+
+describe('locked albums', () => {
+  it('should not stream the users of a locked album to AlbumUsersV1', async () => {
+    const { auth, ctx } = await setup();
+    const { album } = await ctx.newAlbum({ ownerId: auth.user.id });
+    await ctx.newAlbum({ ownerId: auth.user.id, isLocked: true });
+
+    const response = await ctx.syncStream(auth, [SyncRequestType.AlbumUsersV1]);
+    expect(response).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ albumId: album.id, userId: auth.user.id }),
+        type: SyncEntityType.AlbumUserV1,
+      }),
+      expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 }),
+    ]);
+  });
+
+  it('should stream the users of a locked album to AlbumUsersV2', async () => {
+    const { auth, ctx } = await setup();
+    const { album } = await ctx.newAlbum({ ownerId: auth.user.id, isLocked: true });
+
+    const response = await ctx.syncStream(auth, [SyncRequestType.AlbumUsersV2]);
+    expect(response).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ albumId: album.id, userId: auth.user.id }),
+        type: SyncEntityType.AlbumUserV2,
+      }),
+      expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 }),
+    ]);
+
+    await ctx.syncAckAll(auth, response);
+    await ctx.assertSyncIsComplete(auth, [SyncRequestType.AlbumUsersV2]);
+  });
+});

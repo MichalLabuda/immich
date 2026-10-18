@@ -1039,12 +1039,22 @@ export enum ExitCode {
 export enum SyncRequestType {
   AlbumsV1 = 'AlbumsV1',
   AlbumsV2 = 'AlbumsV2',
+  /** Like AlbumsV2, but also streams locked albums (isLocked). Older request types never carry them. */
+  AlbumsV3 = 'AlbumsV3',
   AlbumUsersV1 = 'AlbumUsersV1',
+  /** Like AlbumUsersV1, for locked albums too */
+  AlbumUsersV2 = 'AlbumUsersV2',
   AlbumToAssetsV1 = 'AlbumToAssetsV1',
+  /** Like AlbumToAssetsV1, for locked albums too */
+  AlbumToAssetsV2 = 'AlbumToAssetsV2',
   /** @deprecated */
   AlbumAssetsV1 = 'AlbumAssetsV1',
   AlbumAssetsV2 = 'AlbumAssetsV2',
+  /** Like AlbumAssetsV2, for locked albums too */
+  AlbumAssetsV3 = 'AlbumAssetsV3',
   AlbumAssetExifsV1 = 'AlbumAssetExifsV1',
+  /** Like AlbumAssetExifsV1, for locked albums too */
+  AlbumAssetExifsV2 = 'AlbumAssetExifsV2',
   /** @deprecated */
   AssetsV1 = 'AssetsV1',
   AssetsV2 = 'AssetsV2',
@@ -1117,28 +1127,39 @@ export enum SyncEntityType {
 
   AlbumV1 = 'AlbumV1',
   AlbumV2 = 'AlbumV2',
+  AlbumV3 = 'AlbumV3',
   AlbumDeleteV1 = 'AlbumDeleteV1',
 
   AlbumUserV1 = 'AlbumUserV1',
+  AlbumUserV2 = 'AlbumUserV2',
   AlbumUserBackfillV1 = 'AlbumUserBackfillV1',
+  AlbumUserBackfillV2 = 'AlbumUserBackfillV2',
   AlbumUserDeleteV1 = 'AlbumUserDeleteV1',
 
   /** @deprecated */
   AlbumAssetCreateV1 = 'AlbumAssetCreateV1',
   AlbumAssetCreateV2 = 'AlbumAssetCreateV2',
+  AlbumAssetCreateV3 = 'AlbumAssetCreateV3',
   /** @deprecated */
   AlbumAssetUpdateV1 = 'AlbumAssetUpdateV1',
   AlbumAssetUpdateV2 = 'AlbumAssetUpdateV2',
+  AlbumAssetUpdateV3 = 'AlbumAssetUpdateV3',
   /** @deprecated */
   AlbumAssetBackfillV1 = 'AlbumAssetBackfillV1',
   AlbumAssetBackfillV2 = 'AlbumAssetBackfillV2',
+  AlbumAssetBackfillV3 = 'AlbumAssetBackfillV3',
   AlbumAssetExifCreateV1 = 'AlbumAssetExifCreateV1',
+  AlbumAssetExifCreateV2 = 'AlbumAssetExifCreateV2',
   AlbumAssetExifUpdateV1 = 'AlbumAssetExifUpdateV1',
+  AlbumAssetExifUpdateV2 = 'AlbumAssetExifUpdateV2',
   AlbumAssetExifBackfillV1 = 'AlbumAssetExifBackfillV1',
+  AlbumAssetExifBackfillV2 = 'AlbumAssetExifBackfillV2',
 
   AlbumToAssetV1 = 'AlbumToAssetV1',
+  AlbumToAssetV2 = 'AlbumToAssetV2',
   AlbumToAssetDeleteV1 = 'AlbumToAssetDeleteV1',
   AlbumToAssetBackfillV1 = 'AlbumToAssetBackfillV1',
+  AlbumToAssetBackfillV2 = 'AlbumToAssetBackfillV2',
 
   MemoryV1 = 'MemoryV1',
   MemoryV2 = 'MemoryV2',

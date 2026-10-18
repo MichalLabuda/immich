@@ -232,3 +232,42 @@ describe(SyncRequestType.AlbumsV1, () => {
     });
   });
 });
+
+describe('locked albums', () => {
+  it('should not stream a locked album to AlbumsV2', async () => {
+    const { auth, ctx } = await setup();
+    const { album } = await ctx.newAlbum({ ownerId: auth.user.id });
+    await ctx.newAlbum({ ownerId: auth.user.id, isLocked: true });
+
+    const response = await ctx.syncStream(auth, [SyncRequestType.AlbumsV2]);
+    expect(response).toEqual([
+      expect.objectContaining({ data: expect.objectContaining({ id: album.id }), type: SyncEntityType.AlbumV2 }),
+      expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 }),
+    ]);
+  });
+
+  it('should stream a locked album to AlbumsV3 with isLocked', async () => {
+    const { auth, ctx } = await setup();
+    const { album } = await ctx.newAlbum({ ownerId: auth.user.id });
+    const { album: lockedAlbum } = await ctx.newAlbum({ ownerId: auth.user.id, isLocked: true });
+
+    const response = await ctx.syncStream(auth, [SyncRequestType.AlbumsV3]);
+    expect(response).toHaveLength(3);
+    expect(response).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({ id: lockedAlbum.id, isLocked: true }),
+          type: SyncEntityType.AlbumV3,
+        }),
+        expect.objectContaining({
+          data: expect.objectContaining({ id: album.id, isLocked: false }),
+          type: SyncEntityType.AlbumV3,
+        }),
+        expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 }),
+      ]),
+    );
+
+    await ctx.syncAckAll(auth, response);
+    await ctx.assertSyncIsComplete(auth, [SyncRequestType.AlbumsV3]);
+  });
+});

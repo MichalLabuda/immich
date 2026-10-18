@@ -1,5 +1,5 @@
 import { Kysely } from 'kysely';
-import { AlbumUserRole, SyncEntityType, SyncRequestType } from 'src/enum.js';
+import { AlbumUserRole, AssetVisibility, SyncEntityType, SyncRequestType } from 'src/enum.js';
 import { AlbumRepository } from 'src/repositories/album.repository.js';
 import { AssetRepository } from 'src/repositories/asset.repository.js';
 import { DB } from 'src/schema/index.js';
@@ -314,5 +314,39 @@ describe(SyncRequestType.AlbumToAssetsV1, () => {
     await albumRepo.delete(album.id);
     await wait(2);
     await ctx.assertSyncIsComplete(auth, [SyncRequestType.AlbumToAssetsV1]);
+  });
+});
+
+describe('locked albums', () => {
+  it('should not stream the assets of a locked album to AlbumToAssetsV1', async () => {
+    const { auth, ctx } = await setup();
+    const { asset } = await ctx.newAsset({ ownerId: auth.user.id });
+    const { album } = await ctx.newAlbum({ ownerId: auth.user.id });
+    await ctx.newAlbumAsset({ albumId: album.id, assetId: asset.id });
+    const { asset: lockedAsset } = await ctx.newAsset({ ownerId: auth.user.id, visibility: AssetVisibility.Locked });
+    const { album: lockedAlbum } = await ctx.newAlbum({ ownerId: auth.user.id, isLocked: true });
+    await ctx.newAlbumAsset({ albumId: lockedAlbum.id, assetId: lockedAsset.id });
+
+    const response = await ctx.syncStream(auth, [SyncRequestType.AlbumToAssetsV1]);
+    expect(response).toEqual([
+      expect.objectContaining({ data: { albumId: album.id, assetId: asset.id }, type: SyncEntityType.AlbumToAssetV1 }),
+      expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 }),
+    ]);
+  });
+
+  it('should stream the assets of a locked album to AlbumToAssetsV2', async () => {
+    const { auth, ctx } = await setup();
+    const { asset } = await ctx.newAsset({ ownerId: auth.user.id, visibility: AssetVisibility.Locked });
+    const { album } = await ctx.newAlbum({ ownerId: auth.user.id, isLocked: true });
+    await ctx.newAlbumAsset({ albumId: album.id, assetId: asset.id });
+
+    const response = await ctx.syncStream(auth, [SyncRequestType.AlbumToAssetsV2]);
+    expect(response).toEqual([
+      expect.objectContaining({ data: { albumId: album.id, assetId: asset.id }, type: SyncEntityType.AlbumToAssetV2 }),
+      expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 }),
+    ]);
+
+    await ctx.syncAckAll(auth, response);
+    await ctx.assertSyncIsComplete(auth, [SyncRequestType.AlbumToAssetsV2]);
   });
 });

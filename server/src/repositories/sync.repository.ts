@@ -23,6 +23,8 @@ export type SyncCreatedAfterOptions = {
   nowId: string;
   userId: string;
   afterCreateId?: string;
+  /** Include locked albums; only the request types made for clients that handle them set this. */
+  withLockedAlbums?: boolean;
 };
 
 const dummyCreateAfterOptions = {
@@ -35,6 +37,12 @@ export type SyncQueryOptions = {
   nowId: string;
   userId: string;
   ack?: SyncAck;
+  /**
+   * Include locked albums. Only the album request types made for clients that handle locked albums
+   * set this; every older request type keeps streaming without them, so a client that does not know
+   * the lock never receives a locked album (its assets are synced like any locked asset).
+   */
+  withLockedAlbums?: boolean;
 };
 
 const dummyQueryOptions = {
@@ -147,14 +155,16 @@ export class BaseSync {
 
 class AlbumSync extends BaseSync {
   @GenerateSql({ params: [dummyCreateAfterOptions] })
-  getCreatedAfter({ nowId, userId, afterCreateId }: SyncCreatedAfterOptions) {
+  getCreatedAfter({ nowId, userId, afterCreateId, withLockedAlbums }: SyncCreatedAfterOptions) {
     return this.db
       .selectFrom('album_user')
-      .select(['albumId as id', 'createId'])
-      .where('userId', '=', userId)
-      .$if(!!afterCreateId, (qb) => qb.where('createId', '>=', afterCreateId!))
-      .where('createId', '<', nowId)
-      .orderBy('createId', 'asc')
+      .innerJoin('album', 'album.id', 'album_user.albumId')
+      .select(['album_user.albumId as id', 'album_user.createId'])
+      .where('album_user.userId', '=', userId)
+      .$if(!!afterCreateId, (qb) => qb.where('album_user.createId', '>=', afterCreateId!))
+      .where('album_user.createId', '<', nowId)
+      .$if(!withLockedAlbums, (qb) => qb.where('album.isLocked', '=', false))
+      .orderBy('album_user.createId', 'asc')
       .execute();
   }
 
@@ -177,6 +187,7 @@ class AlbumSync extends BaseSync {
       .distinctOn(['album.id', 'album.updateId'])
       .leftJoin('album_user as album_users', 'album.id', 'album_users.albumId')
       .where('album_users.userId', '=', userId)
+      .$if(!options.withLockedAlbums, (qb) => qb.where('album.isLocked', '=', false))
       .select([
         'album.id',
         'album.albumName as name',
@@ -237,6 +248,8 @@ class AlbumAssetSync extends BaseSync {
       .where('album_asset.updateId', '<=', albumToAssetAck.updateId) // Ensure we only send updates for assets that the client already knows about
       .innerJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
       .where('album_user.userId', '=', userId)
+      .innerJoin('album', 'album.id', 'album_asset.albumId')
+      .$if(!options.withLockedAlbums, (qb) => qb.where('album.isLocked', '=', false))
       .stream();
   }
 
@@ -258,6 +271,8 @@ class AlbumAssetSync extends BaseSync {
       )
       .innerJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
       .where('album_user.userId', '=', userId)
+      .innerJoin('album', 'album.id', 'album_asset.albumId')
+      .$if(!options.withLockedAlbums, (qb) => qb.where('album.isLocked', '=', false))
       .stream();
   }
 }
@@ -283,6 +298,8 @@ class AlbumAssetExifSync extends BaseSync {
       .where('album_asset.updateId', '<=', albumToAssetAck.updateId) // Ensure we only send exif updates for assets that the client already knows about
       .innerJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
       .where('album_user.userId', '=', userId)
+      .innerJoin('album', 'album.id', 'album_asset.albumId')
+      .$if(!options.withLockedAlbums, (qb) => qb.where('album.isLocked', '=', false))
       .stream();
   }
 
@@ -296,6 +313,7 @@ class AlbumAssetExifSync extends BaseSync {
       .innerJoin('album', 'album.id', 'album_asset.albumId')
       .leftJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
       .where('album_user.userId', '=', userId)
+      .$if(!options.withLockedAlbums, (qb) => qb.where('album.isLocked', '=', false))
       .stream();
   }
 }
@@ -335,6 +353,8 @@ class AlbumToAssetSync extends BaseSync {
       .select(['album_asset.assetId as assetId', 'album_asset.albumId as albumId', 'album_asset.updateId'])
       .innerJoin('album_user', 'album_user.albumId', 'album_asset.albumId')
       .where('album_user.userId', '=', userId)
+      .innerJoin('album', 'album.id', 'album_asset.albumId')
+      .$if(!options.withLockedAlbums, (qb) => qb.where('album.isLocked', '=', false))
       .stream();
   }
 }
@@ -384,6 +404,8 @@ class AlbumUserSync extends BaseSync {
             .where('albumUsers.userId', '=', userId),
         ),
       )
+      .innerJoin('album', 'album.id', 'album_user.albumId')
+      .$if(!options.withLockedAlbums, (qb) => qb.where('album.isLocked', '=', false))
       .stream();
   }
 }

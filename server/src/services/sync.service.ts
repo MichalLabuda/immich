@@ -61,6 +61,45 @@ const sendEntityBackfillCompleteAck = async (response: Writable, ackType: SyncEn
   await send(response, { type: SyncEntityType.SyncAckV1, data: {}, ackType, ids: [id, COMPLETE_ID] });
 };
 
+// Entity types of the album streams, per request version. The locked-album-aware request types
+// use new entity types so a client moving to them starts from a fresh checkpoint.
+const ALBUM_USER_TYPES_V1 = {
+  backfillType: SyncEntityType.AlbumUserBackfillV1,
+  upsertType: SyncEntityType.AlbumUserV1,
+} as const;
+const ALBUM_USER_TYPES_V2 = {
+  backfillType: SyncEntityType.AlbumUserBackfillV2,
+  upsertType: SyncEntityType.AlbumUserV2,
+} as const;
+const ALBUM_ASSET_TYPES_V2 = {
+  backfillType: SyncEntityType.AlbumAssetBackfillV2,
+  updateType: SyncEntityType.AlbumAssetUpdateV2,
+  createType: SyncEntityType.AlbumAssetCreateV2,
+} as const;
+const ALBUM_ASSET_TYPES_V3 = {
+  backfillType: SyncEntityType.AlbumAssetBackfillV3,
+  updateType: SyncEntityType.AlbumAssetUpdateV3,
+  createType: SyncEntityType.AlbumAssetCreateV3,
+} as const;
+const ALBUM_ASSET_EXIF_TYPES_V1 = {
+  backfillType: SyncEntityType.AlbumAssetExifBackfillV1,
+  updateType: SyncEntityType.AlbumAssetExifUpdateV1,
+  createType: SyncEntityType.AlbumAssetExifCreateV1,
+} as const;
+const ALBUM_ASSET_EXIF_TYPES_V2 = {
+  backfillType: SyncEntityType.AlbumAssetExifBackfillV2,
+  updateType: SyncEntityType.AlbumAssetExifUpdateV2,
+  createType: SyncEntityType.AlbumAssetExifCreateV2,
+} as const;
+const ALBUM_TO_ASSET_TYPES_V1 = {
+  backfillType: SyncEntityType.AlbumToAssetBackfillV1,
+  upsertType: SyncEntityType.AlbumToAssetV1,
+} as const;
+const ALBUM_TO_ASSET_TYPES_V2 = {
+  backfillType: SyncEntityType.AlbumToAssetBackfillV2,
+  upsertType: SyncEntityType.AlbumToAssetV2,
+} as const;
+
 export const SYNC_TYPES_ORDER = [
   SyncRequestType.AuthUsersV1,
   SyncRequestType.AuthUsersV2,
@@ -74,12 +113,17 @@ export const SYNC_TYPES_ORDER = [
   SyncRequestType.PartnerStacksV1,
   SyncRequestType.AlbumAssetsV1,
   SyncRequestType.AlbumAssetsV2,
+  SyncRequestType.AlbumAssetsV3,
   SyncRequestType.AlbumsV1,
   SyncRequestType.AlbumsV2,
+  SyncRequestType.AlbumsV3,
   SyncRequestType.AlbumUsersV1,
+  SyncRequestType.AlbumUsersV2,
   SyncRequestType.AlbumToAssetsV1,
+  SyncRequestType.AlbumToAssetsV2,
   SyncRequestType.AssetExifsV1,
   SyncRequestType.AlbumAssetExifsV1,
+  SyncRequestType.AlbumAssetExifsV2,
   SyncRequestType.AssetOcrV1,
   SyncRequestType.PartnerAssetExifsV1,
   SyncRequestType.MemoriesV1,
@@ -206,11 +250,20 @@ export class SyncService extends BaseService {
         this.syncPartnerAssetExifsV1(options, response, checkpointMap, session.id),
       [SyncRequestType.AlbumsV1]: () => this.syncAlbumsV1(options, response, checkpointMap),
       [SyncRequestType.AlbumsV2]: () => this.syncAlbumsV2(options, response, checkpointMap),
-      [SyncRequestType.AlbumUsersV1]: () => this.syncAlbumUsersV1(options, response, checkpointMap, session.id),
-      [SyncRequestType.AlbumAssetsV2]: () => this.syncAlbumAssetsV2(options, response, checkpointMap, session.id),
-      [SyncRequestType.AlbumToAssetsV1]: () => this.syncAlbumToAssetsV1(options, response, checkpointMap, session.id),
+      [SyncRequestType.AlbumsV3]: () => this.syncAlbumsV3(options, response, checkpointMap),
+      [SyncRequestType.AlbumUsersV1]: () =>
+        this.syncAlbumUsersV1(options, response, checkpointMap, session.id, ALBUM_USER_TYPES_V1),
+      [SyncRequestType.AlbumUsersV2]: () => this.syncAlbumUsersV2(options, response, checkpointMap, session.id),
+      [SyncRequestType.AlbumAssetsV2]: () =>
+        this.syncAlbumAssetsV2(options, response, checkpointMap, session.id, ALBUM_ASSET_TYPES_V2),
+      [SyncRequestType.AlbumAssetsV3]: () => this.syncAlbumAssetsV3(options, response, checkpointMap, session.id),
+      [SyncRequestType.AlbumToAssetsV1]: () =>
+        this.syncAlbumToAssetsV1(options, response, checkpointMap, session.id, ALBUM_TO_ASSET_TYPES_V1),
+      [SyncRequestType.AlbumToAssetsV2]: () => this.syncAlbumToAssetsV2(options, response, checkpointMap, session.id),
       [SyncRequestType.AlbumAssetExifsV1]: () =>
-        this.syncAlbumAssetExifsV1(options, response, checkpointMap, session.id),
+        this.syncAlbumAssetExifsV1(options, response, checkpointMap, session.id, ALBUM_ASSET_EXIF_TYPES_V1),
+      [SyncRequestType.AlbumAssetExifsV2]: () =>
+        this.syncAlbumAssetExifsV2(options, response, checkpointMap, session.id),
       [SyncRequestType.MemoriesV1]: () => this.syncMemoriesV1(options, response, checkpointMap),
       [SyncRequestType.MemoriesV2]: () => this.syncMemoriesV2(options, response, checkpointMap),
       [SyncRequestType.MemoryToAssetsV1]: () => this.syncMemoryAssetsV1(options, response, checkpointMap),
@@ -503,14 +556,18 @@ export class SyncService extends BaseService {
     }
   }
 
-  private async syncAlbumsV2(options: SyncQueryOptions, response: Writable, checkpointMap: CheckpointMap) {
+  private async syncAlbumsV2(
+    options: SyncQueryOptions,
+    response: Writable,
+    checkpointMap: CheckpointMap,
+    upsertType: SyncEntityType.AlbumV2 | SyncEntityType.AlbumV3 = SyncEntityType.AlbumV2,
+  ) {
     const deleteType = SyncEntityType.AlbumDeleteV1;
     const deletes = this.syncRepository.album.getDeletes({ ...options, ack: checkpointMap[deleteType] });
     for await (const { id, ...data } of deletes) {
       await send(response, { type: deleteType, ids: [id], data });
     }
 
-    const upsertType = SyncEntityType.AlbumV2;
     const upserts = this.syncRepository.album.getUpserts({ ...options, ack: checkpointMap[upsertType] });
     for await (const { updateId, ...data } of upserts) {
       // TODO: return null instead of '' in v4
@@ -522,11 +579,36 @@ export class SyncService extends BaseService {
     }
   }
 
+  /**
+   * AlbumsV2 with locked albums included. The entity type is new (AlbumV3) so that a client moving
+   * to this request type starts from a fresh checkpoint and receives the locked albums it never got.
+   * The same holds for the other locked-album-aware album request types below.
+   */
+  private syncAlbumsV3(options: SyncQueryOptions, response: Writable, checkpointMap: CheckpointMap) {
+    return this.syncAlbumsV2({ ...options, withLockedAlbums: true }, response, checkpointMap, SyncEntityType.AlbumV3);
+  }
+
+  private syncAlbumUsersV2(
+    options: SyncQueryOptions,
+    response: Writable,
+    checkpointMap: CheckpointMap,
+    sessionId: string,
+  ) {
+    return this.syncAlbumUsersV1(
+      { ...options, withLockedAlbums: true },
+      response,
+      checkpointMap,
+      sessionId,
+      ALBUM_USER_TYPES_V2,
+    );
+  }
+
   private async syncAlbumUsersV1(
     options: SyncQueryOptions,
     response: Writable,
     checkpointMap: CheckpointMap,
     sessionId: string,
+    { backfillType, upsertType }: typeof ALBUM_USER_TYPES_V1 | typeof ALBUM_USER_TYPES_V2,
   ) {
     const deleteType = SyncEntityType.AlbumUserDeleteV1;
     const deletes = this.syncRepository.albumUser.getDeletes({ ...options, ack: checkpointMap[deleteType] });
@@ -534,13 +616,11 @@ export class SyncService extends BaseService {
       await send(response, { type: deleteType, ids: [id], data });
     }
 
-    const backfillType = SyncEntityType.AlbumUserBackfillV1;
     const backfillCheckpoint = checkpointMap[backfillType];
     const albums = await this.syncRepository.album.getCreatedAfter({
       ...options,
       afterCreateId: backfillCheckpoint?.updateId,
     });
-    const upsertType = SyncEntityType.AlbumUserV1;
     const upsertCheckpoint = checkpointMap[upsertType];
     if (upsertCheckpoint) {
       const endId = upsertCheckpoint.updateId;
@@ -583,20 +663,33 @@ export class SyncService extends BaseService {
     );
   }
 
-  private async syncAlbumAssetsV2(
+  private syncAlbumAssetsV3(
     options: SyncQueryOptions,
     response: Writable,
     checkpointMap: CheckpointMap,
     sessionId: string,
   ) {
-    const backfillType = SyncEntityType.AlbumAssetBackfillV2;
+    return this.syncAlbumAssetsV2(
+      { ...options, withLockedAlbums: true },
+      response,
+      checkpointMap,
+      sessionId,
+      ALBUM_ASSET_TYPES_V3,
+    );
+  }
+
+  private async syncAlbumAssetsV2(
+    options: SyncQueryOptions,
+    response: Writable,
+    checkpointMap: CheckpointMap,
+    sessionId: string,
+    { backfillType, updateType, createType }: typeof ALBUM_ASSET_TYPES_V2 | typeof ALBUM_ASSET_TYPES_V3,
+  ) {
     const backfillCheckpoint = checkpointMap[backfillType];
     const albums = await this.syncRepository.album.getCreatedAfter({
       ...options,
       afterCreateId: backfillCheckpoint?.updateId,
     });
-    const updateType = SyncEntityType.AlbumAssetUpdateV2;
-    const createType = SyncEntityType.AlbumAssetCreateV2;
     const updateCheckpoint = checkpointMap[updateType];
     const createCheckpoint = checkpointMap[createType];
     if (createCheckpoint) {
@@ -646,7 +739,7 @@ export class SyncService extends BaseService {
         await send(response, {
           type: SyncEntityType.SyncAckV1,
           data: {},
-          ackType: SyncEntityType.AlbumAssetUpdateV2,
+          ackType: updateType,
           ids: [options.nowId],
         });
         isFirst = false;
@@ -655,20 +748,33 @@ export class SyncService extends BaseService {
     }
   }
 
-  private async syncAlbumAssetExifsV1(
+  private syncAlbumAssetExifsV2(
     options: SyncQueryOptions,
     response: Writable,
     checkpointMap: CheckpointMap,
     sessionId: string,
   ) {
-    const backfillType = SyncEntityType.AlbumAssetExifBackfillV1;
+    return this.syncAlbumAssetExifsV1(
+      { ...options, withLockedAlbums: true },
+      response,
+      checkpointMap,
+      sessionId,
+      ALBUM_ASSET_EXIF_TYPES_V2,
+    );
+  }
+
+  private async syncAlbumAssetExifsV1(
+    options: SyncQueryOptions,
+    response: Writable,
+    checkpointMap: CheckpointMap,
+    sessionId: string,
+    { backfillType, updateType, createType }: typeof ALBUM_ASSET_EXIF_TYPES_V1 | typeof ALBUM_ASSET_EXIF_TYPES_V2,
+  ) {
     const backfillCheckpoint = checkpointMap[backfillType];
     const albums = await this.syncRepository.album.getCreatedAfter({
       ...options,
       afterCreateId: backfillCheckpoint?.updateId,
     });
-    const updateType = SyncEntityType.AlbumAssetExifUpdateV1;
-    const createType = SyncEntityType.AlbumAssetExifCreateV1;
     const upsertCheckpoint = checkpointMap[updateType];
     const createCheckpoint = checkpointMap[createType];
     if (createCheckpoint) {
@@ -717,7 +823,7 @@ export class SyncService extends BaseService {
         await send(response, {
           type: SyncEntityType.SyncAckV1,
           data: {},
-          ackType: SyncEntityType.AlbumAssetExifUpdateV1,
+          ackType: updateType,
           ids: [options.nowId],
         });
         isFirst = false;
@@ -726,11 +832,27 @@ export class SyncService extends BaseService {
     }
   }
 
+  private syncAlbumToAssetsV2(
+    options: SyncQueryOptions,
+    response: Writable,
+    checkpointMap: CheckpointMap,
+    sessionId: string,
+  ) {
+    return this.syncAlbumToAssetsV1(
+      { ...options, withLockedAlbums: true },
+      response,
+      checkpointMap,
+      sessionId,
+      ALBUM_TO_ASSET_TYPES_V2,
+    );
+  }
+
   private async syncAlbumToAssetsV1(
     options: SyncQueryOptions,
     response: Writable,
     checkpointMap: CheckpointMap,
     sessionId: string,
+    { backfillType, upsertType }: typeof ALBUM_TO_ASSET_TYPES_V1 | typeof ALBUM_TO_ASSET_TYPES_V2,
   ) {
     const deleteType = SyncEntityType.AlbumToAssetDeleteV1;
     const deletes = this.syncRepository.albumToAsset.getDeletes({ ...options, ack: checkpointMap[deleteType] });
@@ -738,13 +860,11 @@ export class SyncService extends BaseService {
       await send(response, { type: deleteType, ids: [id], data });
     }
 
-    const backfillType = SyncEntityType.AlbumToAssetBackfillV1;
     const backfillCheckpoint = checkpointMap[backfillType];
     const albums = await this.syncRepository.album.getCreatedAfter({
       ...options,
       afterCreateId: backfillCheckpoint?.updateId,
     });
-    const upsertType = SyncEntityType.AlbumToAssetV1;
     const upsertCheckpoint = checkpointMap[upsertType];
     if (upsertCheckpoint) {
       const endId = upsertCheckpoint.updateId;
