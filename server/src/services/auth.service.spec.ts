@@ -1573,6 +1573,26 @@ describe(AuthService.name, () => {
     });
   });
 
+  describe('lockSession', () => {
+    it('should require a session token', async () => {
+      const auth = AuthFactory.create();
+
+      await expect(sut.lockSession(auth)).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(mocks.session.update).not.toHaveBeenCalled();
+    });
+
+    it('should drop the elevation and notify the clients of the session', async () => {
+      const auth = AuthFactory.from().session({ hasElevatedPermission: true }).build();
+      mocks.session.update.mockResolvedValue(SessionFactory.create({ id: auth.session!.id, pinExpiresAt: null }));
+
+      await sut.lockSession(auth);
+
+      expect(mocks.session.update).toHaveBeenCalledWith(auth.session!.id, { pinExpiresAt: null });
+      expect(mocks.event.emit).toHaveBeenCalledWith('SessionLock', { sessionId: auth.session!.id });
+    });
+  });
+
   describe('resetPinCode', () => {
     it('should reset the PIN code', async () => {
       const currentSession = SessionFactory.create();

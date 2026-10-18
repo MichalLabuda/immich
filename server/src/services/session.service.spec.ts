@@ -71,4 +71,25 @@ describe('SessionService', () => {
       expect(mocks.session.delete).toHaveBeenCalledWith('token-1');
     });
   });
+
+  describe('lock', () => {
+    it('should drop the elevation and notify the clients of the session', async () => {
+      mocks.access.session.checkOwnerAccess.mockResolvedValue(new Set(['session-1']));
+      mocks.session.update.mockResolvedValue(SessionFactory.create({ id: 'session-1' }));
+
+      await sut.lock(authStub.user1, 'session-1');
+
+      expect(mocks.session.update).toHaveBeenCalledWith('session-1', { pinExpiresAt: null });
+      expect(mocks.event.emit).toHaveBeenCalledWith('SessionLock', { sessionId: 'session-1' });
+    });
+
+    it('should not lock a session of another user', async () => {
+      mocks.access.session.checkOwnerAccess.mockResolvedValue(new Set());
+
+      await expect(sut.lock(authStub.user1, 'session-1')).rejects.toThrow('Not found or no session.lock access');
+
+      expect(mocks.session.update).not.toHaveBeenCalled();
+      expect(mocks.event.emit).not.toHaveBeenCalled();
+    });
+  });
 });
