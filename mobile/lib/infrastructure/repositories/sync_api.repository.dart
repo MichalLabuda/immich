@@ -52,11 +52,23 @@ class SyncApiRepository {
           SyncRequestType.partnersV1,
           serverVersion.supports(.syncV2) ? SyncRequestType.partnerAssetsV2 : SyncRequestType.partnerAssetsV1,
           SyncRequestType.partnerAssetExifsV1,
-          serverVersion.supports(.syncV2) ? SyncRequestType.albumsV2 : SyncRequestType.albumsV1,
-          SyncRequestType.albumUsersV1,
-          serverVersion.supports(.syncV2) ? SyncRequestType.albumAssetsV2 : SyncRequestType.albumAssetsV1,
-          SyncRequestType.albumAssetExifsV1,
-          SyncRequestType.albumToAssetsV1,
+          serverVersion.supports(.syncLockedAlbumsV1)
+              ? SyncRequestType.albumsV3
+              : serverVersion.supports(.syncV2)
+              ? SyncRequestType.albumsV2
+              : SyncRequestType.albumsV1,
+          serverVersion.supports(.syncLockedAlbumsV1) ? SyncRequestType.albumUsersV2 : SyncRequestType.albumUsersV1,
+          serverVersion.supports(.syncLockedAlbumsV1)
+              ? SyncRequestType.albumAssetsV3
+              : serverVersion.supports(.syncV2)
+              ? SyncRequestType.albumAssetsV2
+              : SyncRequestType.albumAssetsV1,
+          serverVersion.supports(.syncLockedAlbumsV1)
+              ? SyncRequestType.albumAssetExifsV2
+              : SyncRequestType.albumAssetExifsV1,
+          serverVersion.supports(.syncLockedAlbumsV1)
+              ? SyncRequestType.albumToAssetsV2
+              : SyncRequestType.albumToAssetsV1,
           serverVersion.supports(.syncMemoriesV2) ? SyncRequestType.memoriesV2 : SyncRequestType.memoriesV1,
           serverVersion.supports(.syncMemoriesV2) ? SyncRequestType.memoryToAssetsV2 : SyncRequestType.memoryToAssetsV1,
           SyncRequestType.stacksV1,
@@ -166,9 +178,12 @@ const _kResponseMap = <SyncEntityType, Function(Object)>{
   SyncEntityType.partnerAssetExifBackfillV1: SyncAssetExifV1.fromJson,
   SyncEntityType.albumV1: SyncAlbumV1.fromJson,
   SyncEntityType.albumV2: SyncAlbumV2.fromJson,
+  SyncEntityType.albumV3: SyncAlbumV2.fromJson,
   SyncEntityType.albumDeleteV1: SyncAlbumDeleteV1.fromJson,
   SyncEntityType.albumUserV1: SyncAlbumUserV1.fromJson,
   SyncEntityType.albumUserBackfillV1: SyncAlbumUserV1.fromJson,
+  SyncEntityType.albumUserV2: SyncAlbumUserV1.fromJson,
+  SyncEntityType.albumUserBackfillV2: SyncAlbumUserV1.fromJson,
   SyncEntityType.albumUserDeleteV1: SyncAlbumUserDeleteV1.fromJson,
   SyncEntityType.albumAssetCreateV1: SyncAssetV1.fromJson,
   SyncEntityType.albumAssetCreateV2: SyncAssetV2.fromJson,
@@ -176,11 +191,19 @@ const _kResponseMap = <SyncEntityType, Function(Object)>{
   SyncEntityType.albumAssetUpdateV2: SyncAssetV2.fromJson,
   SyncEntityType.albumAssetBackfillV1: SyncAssetV1.fromJson,
   SyncEntityType.albumAssetBackfillV2: SyncAssetV2.fromJson,
+  SyncEntityType.albumAssetCreateV3: SyncAssetV2.fromJson,
+  SyncEntityType.albumAssetUpdateV3: SyncAssetV2.fromJson,
+  SyncEntityType.albumAssetBackfillV3: SyncAssetV2.fromJson,
   SyncEntityType.albumAssetExifCreateV1: SyncAssetExifV1.fromJson,
   SyncEntityType.albumAssetExifUpdateV1: SyncAssetExifV1.fromJson,
   SyncEntityType.albumAssetExifBackfillV1: SyncAssetExifV1.fromJson,
+  SyncEntityType.albumAssetExifCreateV2: SyncAssetExifV1.fromJson,
+  SyncEntityType.albumAssetExifUpdateV2: SyncAssetExifV1.fromJson,
+  SyncEntityType.albumAssetExifBackfillV2: SyncAssetExifV1.fromJson,
   SyncEntityType.albumToAssetV1: SyncAlbumToAssetV1.fromJson,
   SyncEntityType.albumToAssetBackfillV1: SyncAlbumToAssetV1.fromJson,
+  SyncEntityType.albumToAssetV2: SyncAlbumToAssetV1.fromJson,
+  SyncEntityType.albumToAssetBackfillV2: SyncAlbumToAssetV1.fromJson,
   SyncEntityType.albumToAssetDeleteV1: SyncAlbumToAssetDeleteV1.fromJson,
   SyncEntityType.syncAckV1: _SyncEmptyDto.fromJson,
   SyncEntityType.syncResetV1: _SyncEmptyDto.fromJson,

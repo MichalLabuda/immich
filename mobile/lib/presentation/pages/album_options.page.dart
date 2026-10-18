@@ -216,7 +216,8 @@ class AlbumOptionsPage extends HookConsumerWidget {
         body: ListView(
           children: [
             const SizedBox(height: 8),
-            if (isOwner)
+            // A locked album cannot be shared, so neither comments and likes nor invitations apply.
+            if (isOwner && !album.isLocked)
               SwitchListTile.adaptive(
                 value: activityEnabled.value,
                 onChanged: (bool value) async {
@@ -235,7 +236,7 @@ class AlbumOptionsPage extends HookConsumerWidget {
                 ),
               ),
             buildSectionTitle(context.t.shared_album_section_people_title),
-            if (isOwner) ...[
+            if (isOwner && !album.isLocked) ...[
               ListTile(
                 leading: const Icon(Icons.person_add_rounded),
                 title: Text(context.t.invite_people),

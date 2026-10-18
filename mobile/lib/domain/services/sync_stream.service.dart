@@ -251,36 +251,47 @@ class SyncStreamService {
       case SyncEntityType.albumV1:
         return _syncStreamRepository.updateAlbumsV1(data.cast());
       case SyncEntityType.albumV2:
+      case SyncEntityType.albumV3:
         return _syncStreamRepository.updateAlbumsV2(data.cast());
       case SyncEntityType.albumDeleteV1:
         return _syncStreamRepository.deleteAlbumsV1(data.cast());
       case SyncEntityType.albumUserV1:
+      case SyncEntityType.albumUserV2:
         return _syncStreamRepository.updateAlbumUsersV1(data.cast());
       case SyncEntityType.albumUserBackfillV1:
+      case SyncEntityType.albumUserBackfillV2:
         return _syncStreamRepository.updateAlbumUsersV1(data.cast(), debugLabel: 'backfill');
       case SyncEntityType.albumUserDeleteV1:
         return _syncStreamRepository.deleteAlbumUsersV1(data.cast());
       case SyncEntityType.albumAssetCreateV1:
         return _syncStreamRepository.updateAssetsV1(data.cast(), debugLabel: 'album asset create');
       case SyncEntityType.albumAssetCreateV2:
+      case SyncEntityType.albumAssetCreateV3:
         return _syncStreamRepository.updateAssetsV2(data.cast(), debugLabel: 'album asset create');
       case SyncEntityType.albumAssetUpdateV1:
         return _syncStreamRepository.updateAssetsV1(data.cast(), debugLabel: 'album asset update');
       case SyncEntityType.albumAssetUpdateV2:
+      case SyncEntityType.albumAssetUpdateV3:
         return _syncStreamRepository.updateAssetsV2(data.cast(), debugLabel: 'album asset update');
       case SyncEntityType.albumAssetBackfillV1:
         return _syncStreamRepository.updateAssetsV1(data.cast(), debugLabel: 'album asset backfill');
       case SyncEntityType.albumAssetBackfillV2:
+      case SyncEntityType.albumAssetBackfillV3:
         return _syncStreamRepository.updateAssetsV2(data.cast(), debugLabel: 'album asset backfill');
       case SyncEntityType.albumAssetExifCreateV1:
+      case SyncEntityType.albumAssetExifCreateV2:
         return _syncStreamRepository.updateAssetsExifV1(data.cast(), debugLabel: 'album asset exif create');
       case SyncEntityType.albumAssetExifUpdateV1:
+      case SyncEntityType.albumAssetExifUpdateV2:
         return _syncStreamRepository.updateAssetsExifV1(data.cast(), debugLabel: 'album asset exif update');
       case SyncEntityType.albumAssetExifBackfillV1:
+      case SyncEntityType.albumAssetExifBackfillV2:
         return _syncStreamRepository.updateAssetsExifV1(data.cast(), debugLabel: 'album asset exif backfill');
       case SyncEntityType.albumToAssetV1:
+      case SyncEntityType.albumToAssetV2:
         return _syncStreamRepository.updateAlbumToAssetsV1(data.cast());
       case SyncEntityType.albumToAssetBackfillV1:
+      case SyncEntityType.albumToAssetBackfillV2:
         return _syncStreamRepository.updateAlbumToAssetsV1(data.cast(), debugLabel: 'backfill');
       case SyncEntityType.albumToAssetDeleteV1:
         return _syncStreamRepository.deleteAlbumToAssetsV1(data.cast());

@@ -185,6 +185,21 @@ class RemoteAlbumNotifier extends Notifier<RemoteAlbumState> {
     state = state.copyWith(albums: updatedAlbums);
   }
 
+  Future<AlbumLockResult> lockAlbum(String albumId) async {
+    final result = await _remoteAlbumService.lockAlbum(albumId);
+    if (result.removed) {
+      final updatedAlbums = state.albums.where((album) => album.id != albumId).toList();
+      state = state.copyWith(albums: updatedAlbums);
+    }
+
+    return result;
+  }
+
+  Future<AlbumLockResult> unlockAlbum(String albumId) async {
+    // Locked albums are not part of this state; the new unlocked album arrives with the next sync.
+    return _remoteAlbumService.unlockAlbum(albumId);
+  }
+
   Future<List<RemoteAsset>> getAssets(String albumId) {
     return _remoteAlbumService.getAssets(albumId);
   }
@@ -312,4 +327,9 @@ final remoteAlbumSharedUsersProvider = FutureProvider.autoDispose.family<List<Us
   ref.onDispose(() => link.close());
   final service = ref.watch(remoteAlbumServiceProvider);
   return service.getSharedUsers(albumId);
+});
+
+/// The locked albums, for the locked folder. Invalidate after locking or unlocking an album.
+final lockedAlbumsProvider = FutureProvider.autoDispose<List<RemoteAlbum>>((ref) {
+  return ref.watch(remoteAlbumServiceProvider).getLocked();
 });

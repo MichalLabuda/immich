@@ -3,6 +3,11 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'album.model.freezed.dart';
 
+/// Outcome of moving an album to the locked folder: how many of the user's assets moved into the
+/// new locked album, how many assets of other users stayed behind, and whether the emptied source
+/// album was removed.
+typedef AlbumLockResult = ({int assetCount, int skippedAssetCount, bool removed});
+
 enum AlbumAssetOrder {
   // do not change this order!
   asc,
@@ -32,5 +37,8 @@ abstract class RemoteAlbum with _$RemoteAlbum {
     required int assetCount,
     required String ownerName,
     required bool isShared,
+
+    /// A locked album holds locked assets only and is shown inside the locked folder only.
+    @Default(false) bool isLocked,
   }) = _RemoteAlbum;
 }

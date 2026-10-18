@@ -212,6 +212,48 @@ void main() {
       expect(deleteAlbumCalled, isTrue);
     });
 
+    testWidgets('shows lock album option when onLockAlbum is provided', (tester) async {
+      bool lockAlbumCalled = false;
+
+      await tester.pumpConsumerWidget(RemoteAlbumOption(onLockAlbum: () => lockAlbumCalled = true));
+
+      await tester.tap(find.byIcon(Icons.more_vert_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.lock_rounded), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.lock_rounded));
+      await tester.pumpAndSettle();
+
+      expect(lockAlbumCalled, isTrue);
+    });
+
+    testWidgets('shows unlock album option when onUnlockAlbum is provided', (tester) async {
+      bool unlockAlbumCalled = false;
+
+      await tester.pumpConsumerWidget(RemoteAlbumOption(onUnlockAlbum: () => unlockAlbumCalled = true));
+
+      await tester.tap(find.byIcon(Icons.more_vert_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.lock_open_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.lock_rounded), findsNothing);
+
+      await tester.tap(find.byIcon(Icons.lock_open_rounded));
+      await tester.pumpAndSettle();
+
+      expect(unlockAlbumCalled, isTrue);
+    });
+
+    testWidgets('hides lock album option when onLockAlbum is null', (tester) async {
+      await tester.pumpConsumerWidget(RemoteAlbumOption(onEditAlbum: () {}));
+
+      await tester.tap(find.byIcon(Icons.more_vert_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.lock_rounded), findsNothing);
+    });
+
     testWidgets('hides delete album option when onDeleteAlbum is null', (tester) async {
       await tester.pumpConsumerWidget(RemoteAlbumOption(onEditAlbum: () {}));
 

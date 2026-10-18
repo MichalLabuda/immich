@@ -186,6 +186,7 @@ class MediumRepositoryContext {
     DateTime? updatedAt,
     String? description,
     bool? isActivityEnabled,
+    bool? isLocked,
     AlbumAssetOrder? order,
     String? thumbnailAssetId,
   }) async {
@@ -200,6 +201,7 @@ class MediumRepositoryContext {
             updatedAt: .new(TestUtils.date(updatedAt)),
             description: .new(description ?? 'Description for album $id'),
             isActivityEnabled: .new(isActivityEnabled ?? false),
+            isLocked: .new(isLocked ?? false),
             order: .new(order ?? .asc),
             thumbnailAssetId: .new(thumbnailAssetId),
           ),
