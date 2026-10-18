@@ -142,6 +142,7 @@ where
   )
   and "album_asset"."assetId" = $3
   and "album"."deletedAt" is null
+  and "album"."isLocked" = $4
 order by
   "album"."createdAt" desc
 
@@ -163,6 +164,7 @@ where
   )
   and "album_asset"."assetId" in ($2)
   and "album"."deletedAt" is null
+  and "album"."isLocked" = $3
 
 -- AlbumRepository.getMetadataForIds
 select
@@ -244,6 +246,7 @@ from
   and "album_user"."userId" = $2
 where
   "album"."deletedAt" is null
+  and "album"."isLocked" = $3
   and "album_user"."role" = 'owner'
   and (
     exists (
@@ -274,6 +277,7 @@ from
   and "album_user"."userId" = $1
 where
   "album"."deletedAt" is null
+  and "album"."isLocked" = $2
   and "album_user"."role" = 'owner'
   and (
     exists (
@@ -299,6 +303,36 @@ order by
 delete from "album_asset"
 where
   "album_asset"."assetId" in ($1)
+
+-- AlbumRepository.getLockedAlbumIds
+select
+  "album"."id"
+from
+  "album"
+where
+  "album"."id" in ($1)
+  and "album"."isLocked" = $2
+
+-- AlbumRepository.removeAssetsFromLockedAlbums
+delete from "album_asset"
+where
+  "album_asset"."assetId" in ($1)
+  and "album_asset"."albumId" in (
+    select
+      "album"."id"
+    from
+      "album"
+    where
+      "isLocked" = $2
+  )
+
+-- AlbumRepository.getAllAssetIds
+select
+  "album_asset"."assetId"
+from
+  "album_asset"
+where
+  "album_asset"."albumId" = $1
 
 -- AlbumRepository.getAssetIds
 select
